@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        var OrigWebSocket = window.WebSocket;
+        if (!OrigWebSocket) return;
+        function SafeWebSocket(url, protocols) {
+          var isViteWs =
+            protocols === 'vite-hmr' ||
+            protocols === 'vite-ping' ||
+            (Array.isArray(protocols) &&
+              (protocols.indexOf('vite-hmr') !== -1 ||
+                protocols.indexOf('vite-ping') !== -1));
+          if (isViteWs) {
+            var dummy = new EventTarget();
+            dummy.readyState = 1;
+            dummy.OPEN = 1;
+            dummy.CONNECTING = 0;
+            dummy.CLOSING = 2;
+            dummy.CLOSED = 3;
+            dummy.send = function () {};
+            dummy.close = function () {};
+            dummy.addEventListener = EventTarget.prototype.addEventListener.bind(dummy);
+            dummy.removeEventListener = EventTarget.prototype.removeEventListener.bind(dummy);
+            return dummy;
+          }
+          return protocols !== undefined
+            ? new OrigWebSocket(url, protocols)
+            : new OrigWebSocket(url);
+        }
+        SafeWebSocket.prototype = OrigWebSocket.prototype;
+        SafeWebSocket.CONNECTING = OrigWebSocket.CONNECTING;
+        SafeWebSocket.OPEN = OrigWebSocket.OPEN;
+        SafeWebSocket.CLOSING = OrigWebSocket.CLOSING;
+        SafeWebSocket.CLOSED = OrigWebSocket.CLOSED;
+        window.WebSocket = SafeWebSocket;
+      })();
+    </script>
+    <title>CARBON-PULSE // Global &amp; Embedded Intelligence Terminal</title>
+    <meta name="description" content="Palantir-grade Fixed Split-Screen Command HUD featuring 5-Pillar global &amp; embedded systems intelligence, 3D Temporal Matrix, interactive SVG Dot-Connector graph, live RSS ingestion, and Thunglish pattern synthesis." />
+    <meta property="og:title" content="CARBON-PULSE // Global &amp; Embedded Intelligence Terminal" />
+    <meta property="og:description" content="Palantir-grade Fixed Split-Screen Command HUD featuring 5-Pillar global &amp; embedded systems intelligence, 3D Temporal Matrix, interactive SVG Dot-Connector graph, live RSS ingestion, and Thunglish pattern synthesis." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

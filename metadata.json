@@ -1,0 +1,6 @@
+{
+  "name": "CARBON-PULSE // Global & Embedded Intelligence Terminal",
+  "description": "Palantir-grade Fixed Split-Screen Command HUD featuring 5-Pillar global & embedded systems intelligence, 3D Temporal Matrix, interactive SVG Dot-Connector graph, live RSS ingestion, and Thunglish pattern synthesis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
