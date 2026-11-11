@@ -35,7 +35,12 @@ test('resolveStoryAmbientBackdrop assigns topic-matched high-res bgImage, unspla
   for (const id of pillarIds) {
     const backdrop = resolveStoryAmbientBackdrop(NEAT_PILLARS[id]);
     assert.equal(backdrop.pillarId, id);
-    assert.ok(backdrop.bgImage.startsWith('/images/pillars/'));
+    assert.ok(
+      backdrop.bgImage.includes('wikimedia.org') ||
+        backdrop.bgImage.includes('wikipedia.org') ||
+        backdrop.bgImage.includes('unsplash.com') ||
+        backdrop.bgImage.startsWith('/images/pillars/')
+    );
     assert.ok(backdrop.unsplashBgUrl.startsWith('https://images.unsplash.com/'));
     assert.ok(backdrop.themeColor.startsWith('#'));
     assert.ok(backdrop.atmosphereLabel.length > 10);

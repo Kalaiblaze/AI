@@ -95,10 +95,19 @@ export const DynamicTheaterStage: React.FC<DynamicTheaterStageProps> = ({
     'HUD_BRIEFING' | 'BROADCAST_STREAM'
   >('HUD_BRIEFING');
   const [elapsedSec, setElapsedSec] = useState<number>(activeChapterIdx * 20);
+  const elapsedSecRef = useRef<number>(activeChapterIdx * 20);
+  const activeChapterIdxRef = useRef<number>(activeChapterIdx);
+  const onChangeChapterRef = useRef(onChangeChapter);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    activeChapterIdxRef.current = activeChapterIdx;
+    onChangeChapterRef.current = onChangeChapter;
+  });
 
   // Sync elapsed seconds when user clicks a chapter button externally
   useEffect(() => {
+    elapsedSecRef.current = activeChapterIdx * 20;
     setElapsedSec(activeChapterIdx * 20);
   }, [activeChapterIdx, pillarData.id]);
 
@@ -135,22 +144,22 @@ export const DynamicTheaterStage: React.FC<DynamicTheaterStageProps> = ({
     media.videoChapters
   ]);
 
-  // Advance timeline scrubber every second while playing
+  // Advance timeline scrubber every second while playing (outside React render updaters)
   useEffect(() => {
     if (!isPlaying) return;
     const timer = setInterval(() => {
-      setElapsedSec((prev) => {
-        const next = (prev + 1) % 60;
-        const nextChapter = next < 20 ? 0 : next < 40 ? 1 : 2;
-        if (nextChapter !== activeChapterIdx) {
-          onChangeChapter(nextChapter);
-        }
-        return next;
-      });
+      const next = (elapsedSecRef.current + 1) % 60;
+      elapsedSecRef.current = next;
+      setElapsedSec(next);
+
+      const nextChapter = next < 20 ? 0 : next < 40 ? 1 : 2;
+      if (nextChapter !== activeChapterIdxRef.current) {
+        onChangeChapterRef.current(nextChapter);
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isPlaying, activeChapterIdx, onChangeChapter]);
+  }, [isPlaying]);
 
   // Animated HUD Telemetry Radar & Waveform Canvas Overlay
   useEffect(() => {
@@ -311,6 +320,7 @@ export const DynamicTheaterStage: React.FC<DynamicTheaterStageProps> = ({
                 : media.primaryImageUrl
             }
             alt={pillarData.headline}
+            referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget;
               if (
@@ -429,6 +439,7 @@ export const DynamicTheaterStage: React.FC<DynamicTheaterStageProps> = ({
                 type="button"
                 onClick={() => {
                   onChangeChapter(0);
+                  elapsedSecRef.current = 0;
                   setElapsedSec(0);
                   setIsPlaying(true);
                 }}
@@ -479,6 +490,7 @@ export const DynamicTheaterStage: React.FC<DynamicTheaterStageProps> = ({
                     type="button"
                     onClick={() => {
                       onChangeChapter(marker.idx);
+                      elapsedSecRef.current = marker.idx * 20;
                       setElapsedSec(marker.idx * 20);
                       setIsPlaying(true);
                     }}

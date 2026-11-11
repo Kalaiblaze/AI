@@ -1,9 +1,12 @@
 import {
   NeatPillarId,
   NeatPillarData,
-  IncomingWireItem
+  IncomingWireItem,
+  NEAT_PILLARS,
+  createCustomTopicPillarData
 } from './nexusNeatEngine';
 import { AMBIENT_BACKDROP_CATALOG } from './newsEmotionTheme';
+import { getUniqueStoryImage } from './uniqueImageEngine';
 
 export interface SpatialXRayReticle {
   id: string;
@@ -34,6 +37,26 @@ export interface FutifyPosterCard {
   keyMetricBadge: string;
   isJustIn: boolean;
   pillarSnapshot: NeatPillarData;
+}
+
+export interface FutifyStoryItem {
+  id: string;
+  pillarId: NeatPillarId;
+  categoryTag: string;
+  headline: string;
+  subHook: string;
+  posterImageUrl: string;
+  fallbackUnsplashUrl: string;
+  timestampBadge: string;
+  probabilityBadge: string;
+  keyMetricBadge: string;
+  isJustIn: boolean;
+  pillarSnapshot: NeatPillarData;
+  trustedArticle?: {
+    articleUrl?: string;
+    trustedOutlet?: string;
+    publishedAt?: string;
+  };
 }
 
 export interface FutifySwimlaneRow {
@@ -355,22 +378,254 @@ export const SPATIAL_XRAY_CATALOG: Record<
 };
 
 /**
+ * Generates the master initial pool of immutable FUTIFY stories across all 5 pillars
+ * plus high-priority domain deep dives, each with its own strictly unique string ID
+ * and tailored pillar snapshot so card selection is 100% stable and accurate.
+ */
+export function getInitialFutifyStories(
+  customPillarsMap?: Record<NeatPillarId, NeatPillarData>
+): FutifyStoryItem[] {
+  const map = customPillarsMap || NEAT_PILLARS;
+
+  const baseStories: FutifyStoryItem[] = (
+    ['MONEY', 'GEOPOLITICS', 'DEFENCE', 'AEROSPACE', 'TECH'] as NeatPillarId[]
+  ).map((pid, idx) => {
+    const p = map[pid];
+    const conf = HERO_CONFIDENCE_BY_PILLAR[pid];
+    const resolved = getUniqueStoryImage(
+      p.headline,
+      pid,
+      undefined,
+      `seed-${pid}-${idx}`
+    );
+    return {
+      id: `seed-${pid}-${idx}`,
+      pillarId: pid,
+      categoryTag: p.chipLabel,
+      headline: p.headline,
+      subHook: p.thunglishAnalogy[0],
+      posterImageUrl: resolved.primaryUrl,
+      fallbackUnsplashUrl: resolved.fallbackUnsplashUrl,
+      timestampBadge: p.updatedAt,
+      probabilityBadge: `${conf.confidencePercent}% PROBABILITY`,
+      keyMetricBadge: `${p.telemetry[0].value} · ${p.telemetry[0].label}`,
+      isJustIn: idx === 0,
+      pillarSnapshot: p
+    };
+  });
+
+  const specializedList = [
+    {
+      id: 'story-tech-v4l2-deep',
+      pillarId: 'TECH' as NeatPillarId,
+      headline: 'Zero-Copy V4L2 DMA-BUF & Open RISC-V Vector NPU Architecture'
+    },
+    {
+      id: 'story-defence-edge-vision',
+      pillarId: 'DEFENCE' as NeatPillarId,
+      headline: 'Edge AI Optical Navigation for Unjammable Autonomous Swarms'
+    },
+    {
+      id: 'story-aerospace-vleo-mesh',
+      pillarId: 'AEROSPACE' as NeatPillarId,
+      headline: '280km VLEO Direct-to-Cell Laser Satellite Constellations'
+    },
+    {
+      id: 'story-defence-laser-shield',
+      pillarId: 'DEFENCE' as NeatPillarId,
+      headline: '$14-Per-Shot 300kW Solid-State Directed-Energy Air Defense'
+    },
+    {
+      id: 'story-money-gold-repo',
+      pillarId: 'MONEY' as NeatPillarId,
+      headline: 'Central Bank Physical Bullion Accumulation & Bilateral FX Rails'
+    },
+    {
+      id: 'story-geopolitics-mineral-shield',
+      pillarId: 'GEOPOLITICS' as NeatPillarId,
+      headline: 'India-UAE-Europe (IMEC) Sea-Rail Corridor & Semiconductor Fabs'
+    },
+    {
+      id: 'story-geopolitics-asml-euv',
+      pillarId: 'GEOPOLITICS' as NeatPillarId,
+      headline: 'ASML High-NA EUV Export Controls & Global 2nm Fab Race'
+    }
+  ];
+
+  const specializedStories: FutifyStoryItem[] = specializedList.map((spec) => {
+    const snapshot = createCustomTopicPillarData(spec.headline, spec.pillarId);
+    const conf = HERO_CONFIDENCE_BY_PILLAR[spec.pillarId];
+    const resolved = getUniqueStoryImage(
+      spec.headline,
+      spec.pillarId,
+      undefined,
+      spec.id
+    );
+    return {
+      id: spec.id,
+      pillarId: spec.pillarId,
+      categoryTag: snapshot.chipLabel,
+      headline: spec.headline,
+      subHook: snapshot.thunglishAnalogy[0],
+      posterImageUrl: resolved.primaryUrl,
+      fallbackUnsplashUrl: resolved.fallbackUnsplashUrl,
+      timestampBadge: snapshot.updatedAt,
+      probabilityBadge: `${conf.confidencePercent}% PROBABILITY`,
+      keyMetricBadge: `${snapshot.telemetry[0].value} · ${snapshot.telemetry[0].label}`,
+      isJustIn: false,
+      pillarSnapshot: snapshot
+    };
+  });
+
+  return [...baseStories, ...specializedStories];
+}
+
+/**
  * Builds the 4 Netflix / Apple TV+ horizontal poster swimlane rows
  * from the live 60s incoming wire and the 5 intelligence pillars.
+ * Every single card is assigned a unique, headline-specific visual via getUniqueStoryImage.
  */
 export function buildFutifySwimlanes(
   pillarsMap: Record<NeatPillarId, NeatPillarData>,
   incomingWire: IncomingWireItem[],
-  rssImageMap: Partial<Record<NeatPillarId, string>> = {}
+  rssImageMap: Partial<Record<NeatPillarId, string>> = {},
+  allStories?: FutifyStoryItem[]
 ): FutifySwimlaneRow[] {
+  if (allStories && allStories.length > 0) {
+    const storyMap = new Map<string, FutifyStoryItem>();
+    allStories.forEach((s) => storyMap.set(s.id, s));
+
+    const getCardOrFallback = (
+      id: string,
+      fallbackPillar: NeatPillarId
+    ): FutifyPosterCard => {
+      const found = storyMap.get(id);
+      if (found) {
+        const customImg = rssImageMap[found.pillarId];
+        return {
+          id: found.id,
+          pillarId: found.pillarId,
+          categoryTag: found.categoryTag,
+          headline: found.headline,
+          subHook: found.subHook,
+          posterImageUrl:
+            customImg && /^https?:\/\/.+/i.test(customImg)
+              ? customImg
+              : found.posterImageUrl,
+          fallbackUnsplashUrl: found.fallbackUnsplashUrl,
+          timestampBadge: found.timestampBadge,
+          probabilityBadge: found.probabilityBadge,
+          keyMetricBadge: found.keyMetricBadge,
+          isJustIn: found.isJustIn,
+          pillarSnapshot: found.pillarSnapshot
+        };
+      }
+
+      const p = pillarsMap[fallbackPillar] || NEAT_PILLARS[fallbackPillar];
+      const conf = HERO_CONFIDENCE_BY_PILLAR[fallbackPillar];
+      const resolved = getUniqueStoryImage(
+        p.headline,
+        fallbackPillar,
+        undefined,
+        id
+      );
+      return {
+        id,
+        pillarId: fallbackPillar,
+        categoryTag: p.chipLabel,
+        headline: p.headline,
+        subHook: p.thunglishAnalogy[0],
+        posterImageUrl: resolved.primaryUrl,
+        fallbackUnsplashUrl: resolved.fallbackUnsplashUrl,
+        timestampBadge: p.updatedAt,
+        probabilityBadge: `${conf.confidencePercent}% PROBABILITY`,
+        keyMetricBadge: `${p.telemetry[0].value} · ${p.telemetry[0].label}`,
+        isJustIn: false,
+        pillarSnapshot: p
+      };
+    };
+
+    const liveCards: FutifyPosterCard[] = allStories.slice(0, 6).map((s, idx) => {
+      const customImg = rssImageMap[s.pillarId];
+      return {
+        id: s.id,
+        pillarId: s.pillarId,
+        categoryTag: s.categoryTag,
+        headline: s.headline,
+        subHook: s.subHook,
+        posterImageUrl:
+          customImg && /^https?:\/\/.+/i.test(customImg)
+            ? customImg
+            : s.posterImageUrl,
+        fallbackUnsplashUrl: s.fallbackUnsplashUrl,
+        timestampBadge: s.timestampBadge,
+        probabilityBadge: s.probabilityBadge,
+        keyMetricBadge: s.keyMetricBadge,
+        isJustIn: idx < 2 || s.isJustIn,
+        pillarSnapshot: s.pillarSnapshot
+      };
+    });
+
+    return [
+      {
+        id: 'row-live-shifts',
+        title: '🔥 Breaking Future',
+        serifAccent: 'Shifts',
+        subtitle: 'Live 60-Second Incoming Telemetry Wire · Real-Time Global Signals',
+        cards: liveCards
+      },
+      {
+        id: 'row-silicon-embedded',
+        title: '💻 Embedded Systems, V4L2 &',
+        serifAccent: 'Silicon',
+        subtitle: 'Zero-Copy Linux Kernel Pipelines · Sub-2nm Photonics · Export Locks',
+        cards: [
+          getCardOrFallback('seed-TECH-4', 'TECH'),
+          getCardOrFallback('seed-GEOPOLITICS-1', 'GEOPOLITICS'),
+          getCardOrFallback('story-tech-v4l2-deep', 'TECH'),
+          getCardOrFallback('story-defence-edge-vision', 'DEFENCE')
+        ]
+      },
+      {
+        id: 'row-aerospace-defence',
+        title: '🚀 Aerospace & Defence',
+        serifAccent: 'Horizon',
+        subtitle: 'Orbital Cryo-Refueling · 280km VLEO Satellites · Directed-Energy Lasers',
+        cards: [
+          getCardOrFallback('seed-AEROSPACE-3', 'AEROSPACE'),
+          getCardOrFallback('seed-DEFENCE-2', 'DEFENCE'),
+          getCardOrFallback('story-aerospace-vleo-mesh', 'AEROSPACE'),
+          getCardOrFallback('story-defence-laser-shield', 'DEFENCE')
+        ]
+      },
+      {
+        id: 'row-money-geopolitics',
+        title: '💰 Sovereign Money &',
+        serifAccent: 'Geopolitics',
+        subtitle: '$9.8T Debt Refinancing Wall · BIS mBridge Gold Corridors · IMEC Trade Route',
+        cards: [
+          getCardOrFallback('seed-MONEY-0', 'MONEY'),
+          getCardOrFallback('story-geopolitics-asml-euv', 'GEOPOLITICS'),
+          getCardOrFallback('story-money-gold-repo', 'MONEY'),
+          getCardOrFallback('story-geopolitics-mineral-shield', 'GEOPOLITICS')
+        ]
+      }
+    ];
+  }
+
   const toPosterCard = (
     item: IncomingWireItem,
     idx: number
   ): FutifyPosterCard => {
-    const backdrop =
-      AMBIENT_BACKDROP_CATALOG[item.pillarId] || AMBIENT_BACKDROP_CATALOG.MONEY;
     const customImg = rssImageMap[item.pillarId];
     const conf = HERO_CONFIDENCE_BY_PILLAR[item.pillarId];
+    const uniqueResolved = getUniqueStoryImage(
+      item.headline,
+      item.pillarId,
+      undefined,
+      item.id
+    );
+
     return {
       id: item.id,
       pillarId: item.pillarId,
@@ -380,8 +635,8 @@ export function buildFutifySwimlanes(
       posterImageUrl:
         customImg && /^https?:\/\/.+/i.test(customImg)
           ? customImg
-          : backdrop.bgImage,
-      fallbackUnsplashUrl: backdrop.unsplashBgUrl,
+          : uniqueResolved.primaryUrl,
+      fallbackUnsplashUrl: uniqueResolved.fallbackUnsplashUrl,
       timestampBadge: item.timestampIST,
       probabilityBadge: `${conf.confidencePercent}% CONFIDENCE`,
       keyMetricBadge: item.keyMetricBadge,
@@ -394,22 +649,26 @@ export function buildFutifySwimlanes(
     pid: NeatPillarId,
     variantSuffix: string,
     customHeadline?: string,
-    useUnsplashPrimary = false
+    _useUnsplashPrimary = false
   ): FutifyPosterCard => {
     const p = pillarsMap[pid];
-    const backdrop =
-      AMBIENT_BACKDROP_CATALOG[pid] || AMBIENT_BACKDROP_CATALOG.MONEY;
     const conf = HERO_CONFIDENCE_BY_PILLAR[pid];
+    const headlineToUse = customHeadline || p.headline;
+    const uniqueResolved = getUniqueStoryImage(
+      headlineToUse,
+      pid,
+      undefined,
+      `swimlane-${pid}-${variantSuffix}`
+    );
+
     return {
       id: `swimlane-${pid}-${variantSuffix}`,
       pillarId: pid,
       categoryTag: p.chipLabel,
-      headline: customHeadline || p.headline,
+      headline: headlineToUse,
       subHook: p.thunglishAnalogy[0],
-      posterImageUrl: useUnsplashPrimary
-        ? backdrop.unsplashBgUrl
-        : rssImageMap[pid] || backdrop.bgImage,
-      fallbackUnsplashUrl: backdrop.unsplashBgUrl,
+      posterImageUrl: uniqueResolved.primaryUrl,
+      fallbackUnsplashUrl: uniqueResolved.fallbackUnsplashUrl,
       timestampBadge: p.updatedAt,
       probabilityBadge: `${conf.confidencePercent}% PROBABILITY`,
       keyMetricBadge: `${p.telemetry[0].value} · ${p.telemetry[0].label}`,
@@ -423,36 +682,34 @@ export function buildFutifySwimlanes(
   return [
     {
       id: 'row-live-shifts',
-      title: 'Top Future Shifts',
-      serifAccent: 'Right Now',
+      title: '🔥 Breaking Future',
+      serifAccent: 'Shifts',
       subtitle: 'Live 60-Second Incoming Telemetry Wire · Real-Time Global Signals',
       cards: topLiveCards
     },
     {
       id: 'row-silicon-embedded',
-      title: 'Embedded Systems &',
-      serifAccent: 'Silicon Wars',
+      title: '💻 Embedded Systems, V4L2 &',
+      serifAccent: 'Silicon',
       subtitle: 'Zero-Copy Linux Kernel Pipelines · Sub-2nm Photonics · Export Locks',
       cards: [
         pillarToCard('TECH', 'primary'),
         pillarToCard('GEOPOLITICS', 'primary'),
         pillarToCard(
           'TECH',
-           'v4l2-deep',
-          'Zero-Copy V4L2 DMA-BUF & Open RISC-V Vector NPU Architecture',
-          true
+          'v4l2-deep',
+          'Zero-Copy V4L2 DMA-BUF & Open RISC-V Vector NPU Architecture'
         ),
         pillarToCard(
           'DEFENCE',
           'edge-vision',
-          'Edge AI Optical Navigation for Unjammable Autonomous Swarms',
-          true
+          'Edge AI Optical Navigation for Unjammable Autonomous Swarms'
         )
       ]
     },
     {
       id: 'row-aerospace-defence',
-      title: 'Aerospace & Defense',
+      title: '🚀 Aerospace & Defence',
       serifAccent: 'Horizon',
       subtitle: 'Orbital Cryo-Refueling · 280km VLEO Satellites · Directed-Energy Lasers',
       cards: [
@@ -461,20 +718,18 @@ export function buildFutifySwimlanes(
         pillarToCard(
           'AEROSPACE',
           'vleo-mesh',
-          '280km VLEO Direct-to-Cell Laser Satellite Constellations',
-          true
+          '280km VLEO Direct-to-Cell Laser Satellite Constellations'
         ),
         pillarToCard(
           'DEFENCE',
           'laser-shield',
-          '$14-Per-Shot 300kW Solid-State Directed-Energy Air Defense',
-          true
+          '$14-Per-Shot 300kW Solid-State Directed-Energy Air Defense'
         )
       ]
     },
     {
       id: 'row-money-geopolitics',
-      title: 'Sovereign Money &',
+      title: '💰 Sovereign Money &',
       serifAccent: 'Geopolitics',
       subtitle: '$9.8T Debt Refinancing Wall · BIS mBridge Gold Corridors · IMEC Trade Route',
       cards: [
@@ -483,14 +738,12 @@ export function buildFutifySwimlanes(
         pillarToCard(
           'MONEY',
           'gold-repo',
-          'Central Bank Physical Bullion Accumulation & Bilateral FX Rails',
-          true
+          'Central Bank Physical Bullion Accumulation & Bilateral FX Rails'
         ),
         pillarToCard(
           'GEOPOLITICS',
           'mineral-shield',
-          'India-UAE-Europe (IMEC) Sea-Rail Corridor & Semiconductor Fabs',
-          true
+          'India-UAE-Europe (IMEC) Sea-Rail Corridor & Semiconductor Fabs'
         )
       ]
     }
@@ -544,6 +797,9 @@ export function playFutifyTaDumSonic(forceFromClick = false): void {
 
   try {
     const ctx = new AudioCtx();
+    if (typeof window !== 'undefined') {
+      (window as unknown as { __futifyAudioCtx?: AudioContext }).__futifyAudioCtx = ctx;
+    }
     const now = ctx.currentTime;
 
     // Master compressor-like gain

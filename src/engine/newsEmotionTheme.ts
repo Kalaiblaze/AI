@@ -1,4 +1,5 @@
 import { NeatPillarId, NeatPillarData } from './nexusNeatEngine';
+import { getUniqueStoryImage } from './uniqueImageEngine';
 
 export type NewsEmotionId =
   | 'CAUTION_SHOCK'
@@ -229,7 +230,7 @@ export const AMBIENT_BACKDROP_CATALOG: Record<
     pillarId: 'MONEY',
     bgImage: '/images/pillars/money.jpg',
     unsplashBgUrl:
-      'https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=1920&q=85',
+      'https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=3840&q=90',
     themeColor: '#F59E0B',
     atmosphereLabel: 'Sovereign Gold Vaults & Global Macro Trading Floor'
   },
@@ -237,7 +238,7 @@ export const AMBIENT_BACKDROP_CATALOG: Record<
     pillarId: 'GEOPOLITICS',
     bgImage: '/images/pillars/geopolitics.jpg',
     unsplashBgUrl:
-      'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=85',
+      'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=3840&q=90',
     themeColor: '#A855F7',
     atmosphereLabel: 'Global Shipping Straits & Orbital Night-Lights Corridor'
   },
@@ -245,7 +246,7 @@ export const AMBIENT_BACKDROP_CATALOG: Record<
     pillarId: 'DEFENCE',
     bgImage: '/images/pillars/defence.jpg',
     unsplashBgUrl:
-      'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=1920&q=85',
+      'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=3840&q=90',
     themeColor: '#F43F5E',
     atmosphereLabel: 'Fighter Jet HUD & Autonomous Radar Defence Grid'
   },
@@ -253,7 +254,7 @@ export const AMBIENT_BACKDROP_CATALOG: Record<
     pillarId: 'AEROSPACE',
     bgImage: '/images/pillars/aerospace.jpg',
     unsplashBgUrl:
-      'https://images.unsplash.com/photo-1517976487468-f20514c44353?auto=format&fit=crop&w=1920&q=85',
+      'https://images.unsplash.com/photo-1517976487468-f20514c44353?auto=format&fit=crop&w=3840&q=90',
     themeColor: '#10B981',
     atmosphereLabel: 'Orbital Rocket Launch & Deep-Space Telemetry Deck'
   },
@@ -261,7 +262,7 @@ export const AMBIENT_BACKDROP_CATALOG: Record<
     pillarId: 'TECH',
     bgImage: '/images/pillars/tech.jpg',
     unsplashBgUrl:
-      'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1920&q=85',
+      'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=3840&q=90',
     themeColor: '#22D3EE',
     atmosphereLabel: 'Sub-2nm Silicon Wafer Lithography & Embedded PCB Macro'
   }
@@ -270,6 +271,7 @@ export const AMBIENT_BACKDROP_CATALOG: Record<
 /**
  * Resolves the active story's full-screen ambient background image,
  * Unsplash high-res fallback URL, and theme accent color.
+ * Uses headline-specific dynamic AI visual URLs and deterministic 1-of-28 verified Unsplash fallbacks.
  */
 export function resolveStoryAmbientBackdrop(
   pillarData: NeatPillarData,
@@ -278,17 +280,21 @@ export function resolveStoryAmbientBackdrop(
   const base =
     AMBIENT_BACKDROP_CATALOG[pillarData.id] || AMBIENT_BACKDROP_CATALOG.MONEY;
   const emotion = detectNewsEmotion(pillarData);
+  const unique = getUniqueStoryImage(pillarData.headline, pillarData.id);
 
   if (liveRssImageUrl && /^https?:\/\/.+/i.test(liveRssImageUrl.trim())) {
     return {
       ...base,
       bgImage: liveRssImageUrl.trim(),
+      unsplashBgUrl: unique.fallbackUnsplashUrl,
       themeColor: emotion.accentHex
     };
   }
 
   return {
     ...base,
+    bgImage: unique.primaryUrl,
+    unsplashBgUrl: unique.fallbackUnsplashUrl,
     themeColor: emotion.accentHex
   };
 }

@@ -5,7 +5,8 @@ import {
   ExternalLink,
   Lightbulb,
   Crosshair,
-  Play
+  Play,
+  Square
 } from 'lucide-react';
 import { NeatPillarData } from '../engine/nexusNeatEngine';
 import {
@@ -18,7 +19,6 @@ import {
   PILLAR_MEDIA_CATALOG
 } from '../engine/newsMediaCatalog';
 import { AMBIENT_BACKDROP_CATALOG } from '../engine/newsEmotionTheme';
-import { playThunglishVoiceover } from '../engine/thunglishVoicePlayer';
 
 interface SpatialXRayOverlayProps {
   pillarData: NeatPillarData;
@@ -47,17 +47,25 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
     reticles[0].id
   );
   const [imageAngleIdx, setImageAngleIdx] = useState<0 | 1>(0);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
   useEffect(() => {
     setSelectedReticleId(reticles[0].id);
     setImageAngleIdx(0);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
   }, [pillarData.id, reticles]);
 
   const activeReticle: SpatialXRayReticle =
     reticles.find((r) => r.id === selectedReticleId) || reticles[0];
 
-  const displayImageUrl =
+  const rawDisplayUrl =
     imageAngleIdx === 0 ? media.activeDisplayImageUrl : media.secondaryImageUrl;
+  const displayImageUrl = rawDisplayUrl.includes('?wsdl') || rawDisplayUrl.includes('unsplash.com')
+    ? rawDisplayUrl.replace(/w=\d+/, 'w=2000').replace(/q=\d+/, 'q=90')
+    : `${rawDisplayUrl}${rawDisplayUrl.includes('?') ? '&' : '?'}auto=format&fit=crop&w=2000&q=90`;
 
   const verifiedUrl =
     liveTrustedArticle?.articleUrl ||
@@ -67,15 +75,74 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
     PILLAR_MEDIA_CATALOG[pillarData.id].trustedCitations[0].outlet;
 
   const handleSelectReticle = (reticle: SpatialXRayReticle) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
     setSelectedReticleId(reticle.id);
     playSpatialReticleChime();
+  };
+
+  const handleToggleListen = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    setIsSpeaking(true);
+
+    const rawText = `${activeReticle.reticleLabel}. ${activeReticle.thunglishExplain}`;
+    const cleanText = rawText
+      .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/\/\/|%|➔|—|\||•|\*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const sentences = cleanText.match(/[^.!?]+[.!?]*/g) || [cleanText];
+    let sIdx = 0;
+    let sentenceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function speakNextSentence() {
+      if (sIdx >= sentences.length) {
+        setIsSpeaking(false);
+        return;
+      }
+      const sentence = sentences[sIdx].trim();
+      if (!sentence) {
+        sIdx++;
+        speakNextSentence();
+        return;
+      }
+
+      const utter = new SpeechSynthesisUtterance(sentence);
+      utter.rate = 0.80;
+      utter.pitch = 1.02;
+      utter.volume = 1.0;
+
+      utter.onend = () => {
+        sIdx++;
+        sentenceTimer = setTimeout(speakNextSentence, 450); // 450ms pause between sentences
+      };
+      utter.onerror = () => {
+        sIdx++;
+        sentenceTimer = setTimeout(speakNextSentence, 200);
+      };
+
+      window.speechSynthesis.speak(utter);
+    }
+
+    speakNextSentence();
   };
 
   return (
     <section
       aria-label="Amazon Prime X-Ray and Apple Vision Pro Spatial HUD"
       data-testid="spatial-xray-hud"
-      className="rounded-2xl bg-[#070910]/85 backdrop-blur-2xl border border-white/10 shadow-2xl overflow-hidden"
+      className="rounded-2xl bg-[#070910]/90 backdrop-blur-2xl border border-white/10 shadow-2xl overflow-hidden"
     >
       {/* Top Spatial HUD Telemetry Header */}
       <div className="px-5 py-3.5 border-b border-white/10 bg-black/50 flex flex-wrap items-center justify-between gap-3">
@@ -85,7 +152,7 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
             <span>PRIME X-RAY // SPATIAL HUD</span>
           </span>
           <span className="font-mono text-xs text-slate-300">
-            Select any 1px optical reticle (01–03) to inspect probability &amp; Thunglish decode
+            Select any architecture node (01–03) to inspect telemetry &amp; Thunglish decode
           </span>
         </div>
 
@@ -124,12 +191,12 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
         </div>
       </div>
 
-      {/* Main Spatial X-Ray Viewport: Left Translucent X-Ray Frosted Drawer + Right Precision Reticle Visual */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch">
-        {/* LEFT 5 COLUMNS: Amazon Prime "X-Ray" Frosted Glass Drawer */}
+      {/* Main Container Layout with exact requested classes */}
+      <div className="w-full max-w-full overflow-x-hidden px-6 py-4 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start box-border">
+        {/* LEFT X-RAY INSPECTION DRAWER */}
         <div
           data-testid="xray-frosted-drawer"
-          className="lg:col-span-5 backdrop-blur-2xl bg-black/65 border-b lg:border-b-0 lg:border-r border-white/10 border-l-2 border-l-red-500/80 p-5 sm:p-6 flex flex-col justify-between space-y-5"
+          className="lg:col-span-4 w-full min-w-0 pl-4 pr-2 flex flex-col gap-4 break-words backdrop-blur-2xl bg-black/65 rounded-xl border border-white/10 border-l-4 border-l-rose-500 p-5"
         >
           {/* Reticle Switcher Tabs (01, 02, 03) */}
           <div className="space-y-3">
@@ -139,7 +206,7 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
               </span>
               <span
                 data-testid="xray-probability-badge"
-                className="px-2.5 py-0.5 rounded bg-rose-500/20 border border-rose-400/50 font-mono text-xs font-bold text-rose-200"
+                className="px-2.5 py-0.5 rounded bg-rose-500/20 border border-rose-400/50 font-mono text-xs font-bold text-rose-200 shrink-0"
               >
                 {activeReticle.probabilityScore}
               </span>
@@ -159,7 +226,7 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
                     role="tab"
                     aria-selected={isSelected}
                     onClick={() => handleSelectReticle(r)}
-                    className={`px-2.5 py-2 rounded-lg border text-left font-mono transition-all cursor-pointer ${
+                    className={`px-2 py-2 rounded-lg border text-left font-mono transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-rose-500/20 border-rose-400/80 text-white shadow-[0_0_20px_-6px_rgba(244,63,94,0.6)]'
                         : 'bg-white/[0.03] border-white/10 text-slate-400 hover:text-white hover:border-white/25'
@@ -183,7 +250,7 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
               <div className="font-mono text-xs font-bold text-cyan-300 tracking-wide">
                 {activeReticle.reticleLabel}
               </div>
-              <div className="font-display text-lg sm:text-xl font-bold text-white">
+              <div className="font-display text-lg sm:text-xl font-bold text-white leading-snug">
                 {activeReticle.impactMetric}
               </div>
               <div className="font-mono text-[11px] text-slate-400">
@@ -199,16 +266,24 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    void playThunglishVoiceover(
-                      `${activeReticle.reticleLabel}. ${activeReticle.thunglishExplain}`,
-                      `xray-voice-${activeReticle.id}`
-                    );
-                  }}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 font-mono text-[10px] font-semibold text-cyan-200 cursor-pointer"
+                  onClick={handleToggleListen}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded font-mono text-[10px] font-semibold cursor-pointer shrink-0 transition-colors ${
+                    isSpeaking
+                      ? 'bg-rose-500 text-white animate-pulse'
+                      : 'bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 text-cyan-200'
+                  }`}
                 >
-                  <Volume2 className="w-3 h-3" />
-                  <span>🔊 Listen</span>
+                  {isSpeaking ? (
+                    <>
+                      <Square className="w-3 h-3 fill-white" />
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-3 h-3" />
+                      <span>Listen</span>
+                    </>
+                  )}
                 </button>
               </div>
               <p className="text-xs sm:text-sm text-white font-medium leading-relaxed">
@@ -231,7 +306,7 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
           {/* Probability Confidence Meter Bar */}
           <div className="pt-2 border-t border-white/10 space-y-1.5">
             <div className="flex items-center justify-between font-mono text-[11px]">
-              <span className="text-slate-400">FUTIFY PREDICTION CONFIDENCE</span>
+              <span className="text-slate-400">PROBABILITY</span>
               <span className="text-emerald-300 font-bold">
                 {activeReticle.confidencePercent}% VERIFIED
               </span>
@@ -245,131 +320,73 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
           </div>
         </div>
 
-        {/* RIGHT 7 COLUMNS: High-Resolution Optical Viewport with 1px Precision Target Reticles & 45-Degree SVG Leader Lines */}
-        <div className="lg:col-span-7 relative min-h-[360px] sm:min-h-[440px] bg-[#04060A] overflow-hidden select-none">
-          <img
-            src={displayImageUrl}
-            alt={pillarData.headline}
-            onError={(e) => {
-              const target = e.currentTarget;
-              if (target.src !== backdrop.unsplashBgUrl) {
-                target.src = backdrop.unsplashBgUrl;
-              }
-            }}
-            className="w-full h-full object-cover opacity-85 transition-all duration-700"
-          />
+        {/* RIGHT 4K VISUAL STAGE (8 columns) */}
+        <div className="lg:col-span-8 w-full relative min-h-[420px] sm:min-h-[500px] bg-[#04060A] rounded-2xl overflow-hidden border border-white/15 flex flex-col justify-between select-none">
+          {/* High-Resolution 4K Image (with fallback & no-referrer) */}
+          <div className="relative flex-1 w-full overflow-hidden min-h-[300px]">
+            <img
+              src={displayImageUrl}
+              alt={pillarData.headline}
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (target.src !== backdrop.unsplashBgUrl) {
+                  target.src = backdrop.unsplashBgUrl;
+                }
+              }}
+              className="w-full h-full object-cover opacity-90 transition-all duration-700"
+            />
 
-          {/* Subtle Vision Pro Spatial Vignette (Never blocks the image) */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#050508]/90 via-transparent to-black/35"
-          />
+            {/* Subtle Spatial Vignette */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#050508]/95 via-transparent to-black/40"
+            />
 
-          {/* Ultra-Thin 1px Precision Reticles + 45-Degree SVG Leader Lines (──⌖) */}
-          {reticles.map((reticle) => {
-            const isSelected = reticle.id === activeReticle.id;
-            const isLeft = reticle.leaderDir === 'up-left';
+            {/* Top Badge Overlay */}
+            <div className="absolute top-4 left-4 z-10 px-3 py-1.5 rounded-xl bg-black/75 backdrop-blur-xl border border-white/20 font-mono text-xs text-rose-300 font-bold">
+              {media.locationBadge}
+            </div>
+          </div>
 
-            return (
-              <div
-                key={reticle.id}
-                style={{
-                  left: `${reticle.xPercent}%`,
-                  top: `${reticle.yPercent}%`
-                }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 z-20"
-              >
+          {/* 3-COLUMN BAR FOR 01 //, 02 //, 03 // (Placed directly below <img> and above Verified Desk) */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-black/90 border-t border-white/15">
+            {reticles.map((reticle) => {
+              const isSelected = reticle.id === activeReticle.id;
+              return (
                 <button
+                  key={reticle.id}
                   type="button"
-                  data-testid={`xray-reticle-${reticle.code}`}
-                  aria-label={`Inspect reticle ${reticle.reticleLabel}`}
                   onClick={() => handleSelectReticle(reticle)}
-                  className="group relative flex items-center cursor-pointer focus:outline-none"
+                  className={`p-3 rounded-xl border text-left font-mono transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-rose-500/20 border-rose-400 text-white shadow-[0_0_20px_rgba(244,63,94,0.4)]'
+                      : 'bg-white/[0.04] border-white/10 text-slate-300 hover:bg-white/[0.08] hover:border-white/25'
+                  }`}
                 >
-                  {/* 1px Precision Target Reticle Ring + Pulsing Center Dot */}
-                  <span
-                    className={`relative flex items-center justify-center w-8 h-8 rounded-full border transition-all duration-300 ${
-                      isSelected
-                        ? 'border-rose-400 bg-rose-500/15 scale-110 shadow-[0_0_20px_rgba(244,63,94,0.8)]'
-                        : 'border-cyan-300/75 bg-black/30 hover:border-white hover:scale-105'
-                    }`}
-                  >
-                    {/* Outer Crosshair Ticks */}
-                    <span className="pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 w-[1px] h-1.5 bg-current opacity-70" />
-                    <span className="pointer-events-none absolute -bottom-1 left-1/2 -translate-x-1/2 w-[1px] h-1.5 bg-current opacity-70" />
-                    <span className="pointer-events-none absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-[1px] bg-current opacity-70" />
-                    <span className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 w-1.5 h-[1px] bg-current opacity-70" />
-
-                    {/* Tiny Pulsing Center Dot */}
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isSelected
-                          ? 'bg-rose-400 animate-ping'
-                          : 'bg-cyan-300'
-                      }`}
-                    />
-                    <span
-                      className={`absolute w-1.5 h-1.5 rounded-full ${
-                        isSelected ? 'bg-white' : 'bg-cyan-300'
-                      }`}
-                    />
-                  </span>
-
-                  {/* Sleek 45-Degree SVG Leader Line (──⌖) + Minimal HUD Callout Tag */}
-                  <div
-                    className={`hidden sm:flex items-center pointer-events-none ${
-                      isLeft
-                        ? 'flex-row-reverse mr-2 -translate-y-4'
-                        : 'ml-2 -translate-y-4'
-                    }`}
-                  >
-                    <svg
-                      width="38"
-                      height="22"
-                      viewBox="0 0 38 22"
-                      fill="none"
-                      className="shrink-0 overflow-visible"
-                    >
-                      <path
-                        d={
-                          isLeft
-                            ? 'M36 20 L22 4 L2 4'
-                            : 'M2 20 L16 4 L36 4'
-                        }
-                        stroke={isSelected ? '#FB7185' : '#67E8F9'}
-                        strokeWidth="1"
-                        strokeOpacity="0.85"
-                      />
-                      <circle
-                        cx={isLeft ? '2' : '36'}
-                        cy="4"
-                        r="2"
-                        fill={isSelected ? '#FB7185' : '#67E8F9'}
-                      />
-                    </svg>
-
-                    <div
-                      className={`px-2 py-0.5 rounded backdrop-blur-md border font-mono text-[10px] tracking-wider whitespace-nowrap transition-all ${
-                        isSelected
-                          ? 'bg-black/80 border-rose-400/70 text-white font-bold'
-                          : 'bg-black/60 border-white/20 text-slate-200'
-                      }`}
-                    >
-                      <span>{reticle.reticleLabel}</span>
-                      <span className="ml-1.5 text-rose-300 font-bold">
-                        {reticle.confidencePercent}%
-                      </span>
-                    </div>
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[10px] text-rose-300 font-bold">
+                      {reticle.reticleLabel.split('//')[0]} //
+                    </span>
+                    <span className="text-xs text-emerald-300 font-bold">
+                      {reticle.confidencePercent}%
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-white line-clamp-1">
+                    {reticle.reticleLabel.includes('//') ? reticle.reticleLabel.split('//')[1].trim() : reticle.reticleLabel}
+                  </div>
+                  <div className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
+                    {reticle.impactMetric}
                   </div>
                 </button>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
 
-          {/* Bottom Optical HUD Caption Strip */}
-          <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl bg-black/70 backdrop-blur-xl border border-white/10 text-[11px] font-mono text-slate-300">
-            <span>{media.photoCredit}</span>
-            <span className="text-cyan-300">{media.locationBadge}</span>
+          {/* Verified Desk Footer Bar */}
+          <div className="relative z-20 w-full px-4 py-2.5 bg-[#05070E] border-t border-white/10 flex items-center justify-between text-[11px] font-mono text-slate-400">
+            <span>Verified Desk: {media.photoCredit}</span>
+            <span className="text-cyan-300">Prime Video X-Ray Spatial Matrix Active</span>
           </div>
         </div>
       </div>

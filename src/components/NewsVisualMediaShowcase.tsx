@@ -311,6 +311,7 @@ export const NewsVisualMediaShowcase: React.FC<
             <img
               src={displayedPhotoUrl}
               alt={pillarData.headline}
+              referrerPolicy="no-referrer"
               onError={() => setImgFallbackTriggered(true)}
               className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.02]"
             />
@@ -461,6 +462,7 @@ export const NewsVisualMediaShowcase: React.FC<
             <img
               src={videoFrameUrl}
               alt={currentChapter.title}
+              referrerPolicy="no-referrer"
               className={`w-full h-full object-cover object-center transition-all duration-[4500ms] ease-out ${
                 isPlayingVideo
                   ? activeChapterIdx % 2 === 0
@@ -668,6 +670,7 @@ export const NewsVisualMediaShowcase: React.FC<
             <img
               src={broadcastFrameUrl}
               alt={activeBroadcastClip.title}
+              referrerPolicy="no-referrer"
               className={`w-full h-full object-cover object-center transition-all duration-[5000ms] ease-out ${
                 isBroadcastPlaying
                   ? 'scale-110 -translate-x-1 translate-y-1'
@@ -932,6 +935,7 @@ export const NewsVisualMediaShowcase: React.FC<
               <img
                 src={displayedPhotoUrl}
                 alt={pillarData.headline}
+                referrerPolicy="no-referrer"
                 className="w-full h-auto max-h-[75vh] object-contain"
               />
             </div>

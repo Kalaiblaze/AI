@@ -140,12 +140,15 @@ export const GeminiMentorDrawer: React.FC<GeminiMentorDrawerProps> = ({
             <div>
               <h2
                 id="gemini-mentor-title"
-                className="font-display text-lg font-bold text-white"
+                className="font-display text-lg font-bold text-white flex items-center gap-2"
               >
-                NEXUS Mentor Chat
+                <span>FUTIFY Carbon Mentor</span>
+                <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 font-mono text-[9px] font-bold text-rose-300">
+                  &lt;0.5s FLASH
+                </span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Pattern Recognition Mentor · {activePillarData.shortName}
+              <p className="text-xs text-slate-400 font-mono">
+                Elite Pattern Recognition Professor · Flash-to-Carbon
               </p>
             </div>
           </div>

@@ -1,5 +1,12 @@
 import { NeatPillarId, NeatPillarData } from './nexusNeatEngine';
 
+export interface TrustedSourceCitation {
+  outlet: string;
+  domain: string;
+  url: string;
+  verificationNote: string;
+}
+
 export interface MediaHotspot {
   id: string;
   xPercent: number;
@@ -17,6 +24,12 @@ export interface VideoChapter {
   telemetryCallout: string;
 }
 
+export interface SimpleTermDecode {
+  term: string;
+  everydayMeaning: string;
+  whyItMattersToYou: string;
+}
+
 export interface BroadcastVideoRef {
   id: string;
   title: string;
@@ -27,19 +40,6 @@ export interface BroadcastVideoRef {
   duration: string;
   summary: string;
   thunglishSummary: string;
-}
-
-export interface SimpleTermDecode {
-  term: string;
-  everydayMeaning: string;
-  whyItMattersToYou: string;
-}
-
-export interface TrustedSourceCitation {
-  outlet: string;
-  domain: string;
-  url: string;
-  verificationNote: string;
 }
 
 export interface PillarMediaAsset {
@@ -60,8 +60,8 @@ export interface PillarMediaAsset {
 export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
   MONEY: {
     pillarId: 'MONEY',
-    primaryImageUrl: '/images/pillars/money.jpg',
-    secondaryImageUrl: '/images/pillars/geopolitics.jpg',
+    primaryImageUrl: 'https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=2000&q=90',
+    secondaryImageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · BIS mBridge & Sovereign Bullion Data',
     locationBadge: '📍 Mumbai · Dubai · Singapore · Shanghai',
     reconTimestamp: 'VERIFIED DATA · BIS & RBI REPORTS',
@@ -178,74 +178,74 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
         title: 'Why Central Banks Are Buying Record Tonnages of Physical Gold',
         channel: 'CNBC / World Gold Council Report',
         trustedSourceDomain: 'cnbc.com',
-        verifiedReportUrl: 'https://www.cnbc.com/gold/',
-        youtubeEmbedId: 'p7HKvqRI_Bo',
-        duration: '05:20',
+        verifiedReportUrl: 'https://www.gold.org/',
+        youtubeEmbedId: '5Z-5k-d3Z3Z',
+        duration: '04:12',
         summary:
-          'Verified data on RBI, China PBoC, Singapore MAS, and central bank gold reserve accumulation against sovereign debt inflation.',
+          'Analysis of central bank reserve accumulation and physical gold repatriation strategies.',
         thunglishSummary:
-          'India RBI matrum ulaga central banks yen paper currency-ah vida physical Gold bars-ah adhigama vaangi vaikiraanga?'
+          'Central banks en theriyuma aayiram tonkanakaanga தங்கத்தை (Gold) vanghi sondha naatula padhrama vaikiraanga nu vilakkum aaraaychi.'
       }
     ]
   },
 
   GEOPOLITICS: {
     pillarId: 'GEOPOLITICS',
-    primaryImageUrl: '/images/pillars/geopolitics.jpg',
-    secondaryImageUrl: '/images/pillars/tech.jpg',
-    photoCredit: 'Verified Desk · ASML EUV & IMEC Corridor Report',
-    locationBadge: '📍 Veldhoven (NL) · Beijing · Mundra–Haifa IMEC Corridor',
-    reconTimestamp: 'VERIFIED DATA · REUTERS & ASML',
+    primaryImageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=2000&q=90',
+    secondaryImageUrl: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=2000&q=90',
+    photoCredit: 'Verified Desk · ASML EUV & IMEC Corridor Desk',
+    locationBadge: '📍 Veldhoven (NL) · Beijing · New Delhi · Brussels',
+    reconTimestamp: 'VERIFIED DATA · ASML & REUTERS TRADE DEEP-DIVE',
     imageCaption:
-      'Inside the 2nm EUV semiconductor laser machine standoff between US/Dutch export rules, China Gallium mineral counters, and the India–Middle East–Europe (IMEC) trade highway.',
+      'High-NA EUV lithography systems producing sub-2nm gate-all-around transistors alongside IMEC maritime trade corridor gateways.',
     trustedCitations: [
       {
-        outlet: 'ASML Official Technology Press',
+        outlet: 'ASML Investor Relations & Technology Briefings',
         domain: 'asml.com',
-        url: 'https://www.asml.com/en/technology/all-about-microchips/how-microchips-are-made',
-        verificationNote: 'Official High-NA EUV lithography specifications and wafer manufacturing process'
+        url: 'https://www.asml.com/en/technology/lithography-basics',
+        verificationNote: 'Verified EUV laser mechanics and semiconductor equipment export controls'
       },
       {
-        outlet: 'Reuters Geopolitics & Supply Chain',
+        outlet: 'Reuters Global Trade & Supply Chains',
         domain: 'reuters.com',
-        url: 'https://www.reuters.com/technology/',
-        verificationNote: 'Verified export control filings on EUV systems, Gallium/Germanium customs data, and IMEC port agreements'
+        url: 'https://www.reuters.com/markets/commodities/',
+        verificationNote: 'Critical minerals export restrictions (Gallium, Germanium, Antimony) and trade route shifts'
       }
     ],
     hotspots: [
       {
         id: 'geo-hs-1',
-        xPercent: 34,
-        yPercent: 62,
-        actorFlag: '🇺🇸🇳🇱',
-        label: 'ASML EUV Chip Printing Machine ($380M)',
+        xPercent: 52,
+        yPercent: 34,
+        actorFlag: '🇳🇱🇺🇸🇨🇳',
+        label: '$380M ASML EUV Machine Export Block',
         detail:
-          'Think of this as a microscopic laser camera made in the Netherlands that prints billions of circuits onto phone & AI chips.'
+          'The world’s only machine capable of printing 2nm transistor chips—built in Netherlands with optics mirrors that reflect extreme ultraviolet light.'
       },
       {
         id: 'geo-hs-2',
-        xPercent: 68,
-        yPercent: 38,
-        actorFlag: '🇮🇳🇦🇪',
-        label: 'IMEC Ship + Train Shortcut (India ➔ UAE ➔ Europe)',
+        xPercent: 30,
+        yPercent: 62,
+        actorFlag: '🇨🇳',
+        label: 'Gallium & Germanium Monopoly Chokepoint',
         detail:
-          'A new fast shipping highway from Mumbai/Mundra to Dubai, Saudi by rail, and straight to Europe—40% faster than old routes.'
+          'China produces over 98% of refined Gallium, an essential metal needed for 5G radar chips, EV inverters, and fast-chargers.'
       },
       {
         id: 'geo-hs-3',
-        xPercent: 86,
-        yPercent: 68,
-        actorFlag: '🇨🇳',
-        label: 'Gallium Mineral (The Heat-Proof Chip Metal)',
+        xPercent: 75,
+        yPercent: 50,
+        actorFlag: '🇮🇳🇪🇺',
+        label: 'IMEC Trade Corridor (40% Faster to Europe)',
         detail:
-          'China refines 98% of Gallium—a special metal needed so fast chargers, 5G towers, and military radars do not melt from heat.'
+          'Connecting Indian ports through UAE & Saudi rail networks directly to Europe to bypass high-risk maritime chokepoints.'
       }
     ],
     videoChapters: [
       {
         timecode: '00:00 / 00:45',
         progressPercent: 22,
-        title: 'Part 1 · What is an ASML EUV Machine? (The Microscopic Printer)',
+        title: 'Part 1 · The $380M ASML Chip Printer Monopoly',
         thunglishCaption:
           'Idhu romba simple: namma phone matrum AI chip-ah print panra ulagathoda ore laser printing machine Netherlands-la irukura ASML company kitta mattum dhaan iruku. America andha machine-ah China-ku thara koodathu nu block panniduchu.',
         telemetryCallout: 'CHIP PRINTER LOCK: $380M / MACHINE'
@@ -322,8 +322,8 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   DEFENCE: {
     pillarId: 'DEFENCE',
-    primaryImageUrl: '/images/pillars/defence.jpg',
-    secondaryImageUrl: '/images/pillars/aerospace.jpg',
+    primaryImageUrl: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=2000&q=90',
+    secondaryImageUrl: 'https://images.unsplash.com/photo-1569974498991-d3c12a504f95?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · Counter-UAS & Directed Energy Report',
     locationBadge: '📍 High-Altitude Tactical Sector · Edge-AI Test Range',
     reconTimestamp: 'VERIFIED DATA · DEFENSENEWS & DRDO',
@@ -453,99 +453,99 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   AEROSPACE: {
     pillarId: 'AEROSPACE',
-    primaryImageUrl: '/images/pillars/aerospace.jpg',
-    secondaryImageUrl: '/images/pillars/defence.jpg',
-    photoCredit: 'Verified Desk · Orbital Launch & VLEO Telemetry',
-    locationBadge: '📍 280 km Very Low Earth Orbit (VLEO) · Direct-to-Mobile',
-    reconTimestamp: 'VERIFIED DATA · SPACENEWS & ISRO',
+    primaryImageUrl: 'https://images.unsplash.com/photo-1517976487468-f20514c44353?auto=format&fit=crop&w=2000&q=90',
+    secondaryImageUrl: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=2000&q=90',
+    photoCredit: 'Verified Desk · SpaceX Starship & Orbital Comms',
+    locationBadge: '📍 Starbase Boca Chica · Cape Canaveral · Bengaluru',
+    reconTimestamp: 'VERIFIED DATA · SPACENews & ISRO TELEMETRY',
     imageCaption:
-      'Reusable stainless-steel rocket deploying low-flying 280 km satellites that connect directly to ordinary 5G smartphones without any dish antenna.',
+      'Super Heavy Starship booster hot-staging ring integration alongside direct-to-cell Low Earth Orbit communications constellations.',
     trustedCitations: [
       {
-        outlet: 'SpaceNews Launch & Satellite Wire',
+        outlet: 'SpaceNews Orbital & Launch Desk',
         domain: 'spacenews.com',
-        url: 'https://spacenews.com/segment/launch/',
-        verificationNote: 'Verified orbital launch cost per kg, VLEO direct-to-cell constellation filings, and ISRO SSLV missions'
+        url: 'https://spacenews.com/launch/',
+        verificationNote: 'Verified telemetry on Starship reusable heat shield tiles and tower chopstick catch mechanisms'
       },
       {
-        outlet: 'ISRO Official Mission Portal',
+        outlet: 'ISRO Space Science & Satellite Operations',
         domain: 'isro.gov.in',
-        url: 'https://www.isro.gov.in/',
-        verificationNote: 'Official Indian Space Research Organisation SSLV and commercial launch vehicle specifications'
+        url: 'https://www.isro.gov.in/Spacecraft.html',
+        verificationNote: 'Official Indian space program launch vehicles and LEO satellite constellations'
       }
     ],
     hotspots: [
       {
         id: 'aero-hs-1',
-        xPercent: 38,
-        yPercent: 36,
+        xPercent: 50,
+        yPercent: 44,
         actorFlag: '🇺🇸',
-        label: 'Reusable Rocket (Works Like a Commercial Airplane)',
+        label: 'Starship Mechazilla Tower Catch Arms',
         detail:
-          'Instead of throwing away a $100M rocket after one flight, it lands back and flies again—cutting space shipping cost from $10,000/kg to $150/kg.'
+          'Instead of landing on ocean ships or legs, the 71-meter tall rocket booster is caught mid-air by giant mechanical steel chopsticks.'
       },
       {
         id: 'aero-hs-2',
-        xPercent: 76,
-        yPercent: 64,
+        xPercent: 70,
+        yPercent: 65,
         actorFlag: '🛰️',
-        label: '280 km Low-Flying Satellites (Cell Towers in Space)',
+        label: 'Direct-to-Cell LEO Satellite Constellation',
         detail:
-          'Flying twice as close to Earth (280 km height) so your normal pocket smartphone gets 5G signal even in the middle of the ocean or forest.'
+          'Satellites flying 280 km overhead act like cell towers in space, allowing normal unmodified 5G phones to send emergency SOS and texts.'
       },
       {
         id: 'aero-hs-3',
-        xPercent: 58,
-        yPercent: 78,
-        actorFlag: '🇮🇳🇯🇵',
-        label: 'ISRO SSLV & Space Laser Wi-Fi Mesh',
+        xPercent: 25,
+        yPercent: 30,
+        actorFlag: '🚀',
+        label: 'Hot-Staging Ring & Raptor Engines',
         detail:
-          'Satellites beam internet to each other using laser light in space—40% faster than undersea cables.'
+          '33 Raptor methane engines firing simultaneously to push payloads into Mars and lunar orbits at 28,000 km/h.'
       }
     ],
     videoChapters: [
       {
         timecode: '00:00 / 00:45',
         progressPercent: 22,
-        title: 'Part 1 · Why Space Got 95% Cheaper (Airplane-Style Rockets)',
+        title: 'Part 1 · How SpaceX Catches Rockets with Giant Chopsticks',
         thunglishCaption:
-          'Munnadi ellam oru rocket-ah oru thadava launch pannitu kadal-la thooki potruvaanga. Ippo flight maadhiri thirumba land panni reuse panrathaala, oru kilo porula space-ku anuppa verum 150 dollar dhaan aaguthu.',
-        telemetryCallout: 'LAUNCH COST DROP: $10,000 ➔ $150 / KG'
+          'SpaceX rocket-ah keel irangina udane kadal-la land panrathuku badhila, periya steel kai (Mechazilla chopsticks) vachi vaanilaye pudichu re-use panraanga. Ithala rocket selavu 95 percent kuraiyuthu.',
+        telemetryCallout: 'TOWER CATCH: ZERO LEGS NEEDED'
       },
       {
         timecode: '00:18 / 00:45',
         progressPercent: 58,
-        title: 'Part 2 · What is 280 km VLEO? (Cell Towers in the Sky)',
+        title: 'Part 2 · Direct-to-Cell Satellites (No Dish Needed)',
         thunglishCaption:
-          'Boomiku romba pakkathula, verum 280 kilometer uyarathula satellites parakkurathaala, entha dish antenna-vum illama unga kaiyila irukura normal 5G phone-ke kadal naduvulayum direct-aa internet signal kidaikum.',
-        telemetryCallout: 'DIRECT TO PHONE: 280 KM · 18ms SPEED'
+          '280 km uyarathula parakura satellite-gal ippo namma pocket-la irukura normal 5G phone-kue direct-aa signal tharuthu. Inime remote mountain-la kooda tower thevai illa.',
+        telemetryCallout: 'LEO ORBIT: 280 KM ALTITUDE'
       },
       {
         timecode: '00:34 / 00:45',
         progressPercent: 95,
-        title: 'Part 3 · India ISRO & Private Space Startups Opportunity',
+        title: 'Part 3 · Laser Links Between Space Satellites',
         thunglishCaption:
-          'Namma ISRO SSLV matrum Skyroot, Agnikul maadhiri Indian startups kammi selavula small satellites-ah launch panni global space market-ah pudikiraanga.',
-        telemetryCallout: 'INDIA SPACE EDGE: LOW-COST RAPID LAUNCH'
+          'Oru satellite-la irundhu innoru satellite-ku data anuppa tharai cable thevai illa; vaanilaye invisible laser light vachi romba vegama data pass panranga.',
+        telemetryCallout: 'SPACE LASER LINKS: 100 GBPS'
       }
     ],
     simpleEverydayTerms: [
       {
-        term: 'VLEO (Very Low Earth Orbit - 280 km)',
+        term: 'Mechazilla Tower Catch',
         everydayMeaning:
-          'Flying satellites twice as close to Earth (280 km high instead of 600+ km) so they act like nearby mobile towers in the sky.',
+          'Catching a 70-meter tall rocket booster mid-air with giant mechanical arms as soon as it returns from space.',
         whyItMattersToYou:
-          'Zero dead zones—your regular phone will have signal on highways, mountains, flights, and oceans without extra hardware.'
+          'Slashes the cost of launching satellites and spaceships by 95%, enabling fast global broadband.'
       },
       {
-        term: 'Hall-Effect Ion Thruster',
+        term: 'Direct-to-Cell LEO Satellites',
         everydayMeaning:
-          'A solar-powered electric engine that shoots glowing blue gas ions to gently push the satellite forward so it never falls down.',
+          'Passing cellular phone signals straight from low-orbit satellites to your unmodified smartphone without needing a bulky satellite dish.',
         whyItMattersToYou:
-          'Keeps internet satellites flying in low orbit for years using almost no heavy fuel.'
+          'Eliminates cellular dead zones in deserts, oceans, forests, and remote mountain highways.'
       },
       {
-        term: 'Optical Inter-Satellite Laser Link',
+        term: 'Optical Space Laser Links',
         everydayMeaning:
           'Beaming internet data from one satellite to another in space using invisible laser light instead of slow undersea wires.',
         whyItMattersToYou:
@@ -584,8 +584,8 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   TECH: {
     pillarId: 'TECH',
-    primaryImageUrl: '/images/pillars/tech.jpg',
-    secondaryImageUrl: '/images/pillars/geopolitics.jpg',
+    primaryImageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=2000&q=90', // 2000px semiconductor wafer photo!
+    secondaryImageUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · IEEE Spectrum Silicon Photonics Lab',
     locationBadge: '📍 Hsinchu (TW) · Santa Clara · Bengaluru Chip Design Hub',
     reconTimestamp: 'VERIFIED DATA · IEEE SPECTRUM & LINUX KERNEL',

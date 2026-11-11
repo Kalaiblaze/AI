@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Play,
   Sparkles,
@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Pause,
   Volume2,
+  VolumeX,
   Share2,
   PlusCircle,
   Search,
@@ -18,7 +19,8 @@ import {
   ShieldCheck,
   ExternalLink,
   Code2,
-  Crosshair
+  Crosshair,
+  Network
 } from 'lucide-react';
 import {
   NEAT_PILLARS,
@@ -37,7 +39,17 @@ import {
   buildTeamsAdaptiveCardPayload
 } from './engine/broadcastFormatter';
 import { PILLAR_MEDIA_CATALOG } from './engine/newsMediaCatalog';
-import { playThunglishVoiceover } from './engine/thunglishVoicePlayer';
+import {
+  startOrSwitchStoryVoice,
+  hardStopVoiceEngine,
+  playLiveNewsAnchorBriefing,
+  speakEmotionalNewsAnchor,
+  stopNewsAnchorSpeech
+} from './services/voiceAnchor';
+import {
+  speakCrystalClearBriefing,
+  playThunglishVoiceover
+} from './engine/thunglishVoicePlayer';
 import {
   detectNewsEmotion,
   NEWS_EMOTION_THEMES,
@@ -49,13 +61,19 @@ import {
   HERO_CONFIDENCE_BY_PILLAR,
   buildFutifySwimlanes,
   FutifyPosterCard,
+  FutifyStoryItem,
+  getInitialFutifyStories,
   playSpatialReticleChime
 } from './engine/futifyEngine';
+import { getUniqueStoryImage } from './engine/uniqueImageEngine';
 import {
   FutifyLogoMark,
   FutifySonicIntroOverlay
 } from './components/FutifyBrandAndIntro';
 import { SpatialXRayOverlay } from './components/SpatialXRayOverlay';
+import { InteractiveMindMapView } from './components/InteractiveMindMapView';
+import { InteractivePatternLab } from './components/InteractivePatternLab';
+import { useFutifySelfHealingWatchdog } from './hooks/useFutifySelfHealingWatchdog';
 import { DynamicTheaterStage } from './components/DynamicTheaterStage';
 import { MetricSparklineCard } from './components/MetricSparklineCard';
 import { PasteCustomTopicModal } from './components/PasteCustomTopicModal';
@@ -96,14 +114,27 @@ const NAV_CATEGORIES: { id: 'HOME' | NeatPillarId; label: string }[] = [
 export default function App() {
   const [pillarsMap, setPillarsMap] =
     useState<Record<NeatPillarId, NeatPillarData>>(NEAT_PILLARS);
-  const [activePillar, setActivePillar] = useState<NeatPillarId>('MONEY');
+  const [stories, setStories] = useState<FutifyStoryItem[]>(() =>
+    getInitialFutifyStories()
+  );
+  const [selectedStoryId, setSelectedStoryId] = useState<string>(() => {
+    const init = getInitialFutifyStories();
+    return init[0].id;
+  });
   const [activeNavFilter, setActiveNavFilter] = useState<'HOME' | NeatPillarId>(
     'HOME'
   );
   const [incomingWire, setIncomingWire] = useState<IncomingWireItem[]>(() =>
     getInitialIncomingWire()
   );
-  const [selectedWireId, setSelectedWireId] = useState<string>('seed-MONEY-0');
+
+  // Derive active story strictly by immutable selectedStoryId
+  const activeStoryItem: FutifyStoryItem = useMemo(() => {
+    return stories.find((s) => s.id === selectedStoryId) || stories[0];
+  }, [stories, selectedStoryId]);
+
+  const currentData: NeatPillarData = activeStoryItem.pillarSnapshot;
+  const activePillar: NeatPillarId = activeStoryItem.pillarId;
 
   // FUTIFY Cinema Sonic Intro Overlay State
   const [isSonicIntroOpen, setIsSonicIntroOpen] = useState<boolean>(true);
@@ -149,6 +180,15 @@ export default function App() {
     >
   >({});
 
+  // Real Human News Anchor Voice Engine State
+  const [isAnchorSpeaking, setIsAnchorSpeaking] = useState<boolean>(false);
+  const [anchorStageDirection, setAnchorStageDirection] = useState<string>('');
+  const [anchorLiveSubtitle, setAnchorLiveSubtitle] = useState<string>('');
+  const [voiceSpeed, setVoiceSpeed] = useState<number>(0.56);
+
+  // Mount Self-Healing Watchdog Hook
+  useFutifySelfHealingWatchdog();
+
   const rotationStepRef = useRef<number>(0);
   const syncLockRef = useRef<boolean>(false);
   const broadcastConfigRef = useRef<AutoBroadcastConfig>(broadcastConfig);
@@ -159,7 +199,6 @@ export default function App() {
     broadcastConfigRef.current = broadcastConfig;
   }, [broadcastConfig]);
 
-  const currentData = pillarsMap[activePillar];
   const detectedEmotion = detectNewsEmotion(currentData);
   const activeEmotion = emotionOverride
     ? NEWS_EMOTION_THEMES[emotionOverride]
@@ -172,7 +211,8 @@ export default function App() {
   const swimlaneRows = buildFutifySwimlanes(
     pillarsMap,
     incomingWire,
-    rssImageMap
+    rssImageMap,
+    stories
   );
 
   const triggerAmbientCrossfade = useCallback(() => {
@@ -248,10 +288,46 @@ export default function App() {
         sourceBadge
       );
 
+      const resolvedImg = getUniqueStoryImage(
+        wireItem.headline,
+        targetPillar,
+        undefined,
+        wireItem.id
+      );
+
+      const newStoryItem: FutifyStoryItem = {
+        id: wireItem.id,
+        pillarId: targetPillar,
+        categoryTag: wireItem.chipLabel,
+        headline: wireItem.headline,
+        subHook: updatedPillar.thunglishAnalogy[0],
+        posterImageUrl:
+          fetchedRssThumb && /^https?:\/\/.+/i.test(fetchedRssThumb)
+            ? fetchedRssThumb
+            : resolvedImg.primaryUrl,
+        fallbackUnsplashUrl: resolvedImg.fallbackUnsplashUrl,
+        timestampBadge: wireItem.timestampIST,
+        probabilityBadge: `${HERO_CONFIDENCE_BY_PILLAR[targetPillar].confidencePercent}% CONFIDENCE`,
+        keyMetricBadge: wireItem.keyMetricBadge,
+        isJustIn: true,
+        pillarSnapshot: updatedPillar,
+        trustedArticle:
+          fetchedArticleUrl || fetchedOutlet
+            ? {
+                articleUrl: fetchedArticleUrl,
+                trustedOutlet: fetchedOutlet,
+                publishedAt: fetchedPubDate
+              }
+            : undefined
+      };
+
+      // Prepend to stories pool so it appears in live wire, but NEVER overwrite selectedStoryId
+      setStories((prev) => [newStoryItem, ...prev.slice(0, 24)]);
       setPillarsMap((prev) => ({
         ...prev,
         [targetPillar]: updatedPillar
       }));
+
       if (fetchedRssThumb) {
         setRssImageMap((prev) => ({
           ...prev,
@@ -268,10 +344,8 @@ export default function App() {
           }
         }));
       }
-      setActivePillar(targetPillar);
-      setEmotionOverride(null);
+
       setIncomingWire((prev) => [wireItem, ...prev.slice(0, 19)]);
-      setSelectedWireId(wireItem.id);
       setLastSyncedAt(wireItem.timestampIST);
       setSecondsRemaining(60);
       setIsSyncingNow(false);
@@ -315,11 +389,10 @@ export default function App() {
         }).catch(() => {});
       }
 
-      triggerAmbientCrossfade();
       setIsStagePulsing(true);
       setTimeout(() => setIsStagePulsing(false), 1100);
     },
-    [triggerAmbientCrossfade]
+    []
   );
 
   // 1-Second Real-Time Countdown Timer Effect
@@ -339,8 +412,53 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [isAutoSyncActive, triggerLiveMinuteUpdate]);
 
+  const switchAudioIfSpeaking = (newStory: FutifyStoryItem) => {
+    if (!isAnchorSpeaking) {
+      hardStopVoiceEngine();
+      return;
+    }
+    const snap = newStory.pillarSnapshot;
+    const emotionTag =
+      snap.id === 'DEFENCE' || snap.headline.toLowerCase().includes('threat')
+        ? 'CRISIS'
+        : snap.id === 'MONEY' || snap.id === 'GEOPOLITICS'
+        ? 'TENSION'
+        : 'BREAKTHROUGH';
+
+    startOrSwitchStoryVoice(
+      {
+        pillar: NEAT_PILLARS[newStory.pillarId]?.shortName || newStory.pillarId,
+        title: newStory.headline,
+        emotion: emotionTag,
+        analogy: `${snap.thunglishAnalogy[0]} ${snap.thunglishAnalogy[1]}`,
+        failureAutopsy: `${snap.eliteBrain.failureTitle}. Fatal flaw: ${snap.eliteBrain.failurePoints[0]}`,
+        futureImpact: snap.timeline.futureImpact,
+        winnerStrategy: snap.eliteBrain.winnerTitle
+      },
+      0.78,
+      (subtitle, tone) => {
+        setAnchorStageDirection(`[🔴 ${tone || 'SWITCHED BRIEFING'}]`);
+        setAnchorLiveSubtitle(subtitle);
+      },
+      (speaking) => {
+        setIsAnchorSpeaking(speaking);
+        if (!speaking) {
+          setAnchorStageDirection('');
+          setAnchorLiveSubtitle('');
+        }
+      }
+    );
+  };
+
   const handleSelectPillar = (pid: NeatPillarId) => {
-    setActivePillar(pid);
+    const matched = stories.find((s) => s.pillarId === pid) || stories[0];
+    if (matched) {
+      setSelectedStoryId(matched.id);
+      switchAudioIfSpeaking(matched);
+    } else {
+      hardStopVoiceEngine();
+      setIsAnchorSpeaking(false);
+    }
     setEmotionOverride(null);
     setTheaterChapterIdx(0);
     triggerAmbientCrossfade();
@@ -348,17 +466,121 @@ export default function App() {
   };
 
   const handleSelectPosterCard = (card: FutifyPosterCard) => {
-    setPillarsMap((prev) => ({
-      ...prev,
-      [card.pillarId]: card.pillarSnapshot
-    }));
-    setActivePillar(card.pillarId);
+    let targetStory: FutifyStoryItem | undefined;
+    setStories((prev) => {
+      const exists = prev.find((s) => s.id === card.id);
+      if (!exists) {
+        const conf = HERO_CONFIDENCE_BY_PILLAR[card.pillarId];
+        const newStory: FutifyStoryItem = {
+          id: card.id,
+          pillarId: card.pillarId,
+          categoryTag: card.categoryTag,
+          headline: card.headline,
+          subHook: card.subHook,
+          posterImageUrl: card.posterImageUrl,
+          fallbackUnsplashUrl: card.fallbackUnsplashUrl,
+          timestampBadge: card.timestampBadge,
+          probabilityBadge:
+            card.probabilityBadge || `${conf.confidencePercent}% PROBABILITY`,
+          keyMetricBadge: card.keyMetricBadge,
+          isJustIn: card.isJustIn,
+          pillarSnapshot: card.pillarSnapshot
+        };
+        targetStory = newStory;
+        return [newStory, ...prev];
+      }
+      targetStory = exists;
+      return prev;
+    });
+
+    const chosenStory =
+      targetStory ||
+      stories.find((s) => s.id === card.id) || {
+        id: card.id,
+        pillarId: card.pillarId,
+        categoryTag: card.categoryTag,
+        headline: card.headline,
+        subHook: card.subHook,
+        posterImageUrl: card.posterImageUrl,
+        fallbackUnsplashUrl: card.fallbackUnsplashUrl,
+        timestampBadge: card.timestampBadge,
+        probabilityBadge: card.probabilityBadge || '98% PROBABILITY',
+        keyMetricBadge: card.keyMetricBadge,
+        isJustIn: card.isJustIn,
+        pillarSnapshot: card.pillarSnapshot
+      };
+
+    setSelectedStoryId(card.id);
+    switchAudioIfSpeaking(chosenStory);
     setEmotionOverride(null);
-    setSelectedWireId(card.id);
     setTheaterChapterIdx(0);
     triggerAmbientCrossfade();
     playSpatialReticleChime();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleToggleLiveAnchor = async () => {
+    if (isAnchorSpeaking) {
+      hardStopVoiceEngine();
+      setIsAnchorSpeaking(false);
+      setAnchorStageDirection('');
+      setAnchorLiveSubtitle('');
+      return;
+    }
+
+    try {
+      // 1. Ensure AudioContext wakes up on user gesture
+      if (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        if (!(window as any).__globalAudioCtx) {
+          (window as any).__globalAudioCtx = new AudioCtx();
+        }
+        if ((window as any).__globalAudioCtx.state === 'suspended') {
+          await (window as any).__globalAudioCtx.resume();
+        }
+      }
+
+      // 2. Trigger the Synchronized Tamil/English Voice Anchor with UI step highlighting
+      setIsAnchorSpeaking(true);
+      const emotionTag =
+        activeEmotion.id === 'CRITICAL_ALERT' || activeEmotion.id === 'CAUTION_SHOCK'
+          ? 'CRISIS'
+          : activeEmotion.id === 'STRATEGIC_REALIGNMENT'
+          ? 'TENSION'
+          : 'BREAKTHROUGH';
+
+      await startOrSwitchStoryVoice(
+        {
+          pillar: NEAT_PILLARS[activePillar]?.shortName || activePillar,
+          title: activeStoryItem.headline,
+          emotion: emotionTag,
+          analogy: `${currentData.thunglishAnalogy[0]} ${currentData.thunglishAnalogy[1]}`,
+          failureAutopsy: `${currentData.eliteBrain.failureTitle}. Fatal flaw: ${currentData.eliteBrain.failurePoints[0]}`,
+          futureImpact: currentData.timeline.futureImpact,
+          winnerStrategy: currentData.eliteBrain.winnerTitle
+        },
+        0.90,
+        (subtitle, tone) => {
+          setAnchorStageDirection(`[🔴 ${tone || 'LIVE ANCHOR'}]`);
+          setAnchorLiveSubtitle(subtitle);
+        },
+        (speaking) => {
+          setIsAnchorSpeaking(speaking);
+          if (!speaking) {
+            setAnchorStageDirection('');
+            setAnchorLiveSubtitle('');
+          }
+        },
+        (stepIndex) => {
+          if (typeof stepIndex === 'number' && stepIndex >= 0 && stepIndex < 3) {
+            setTheaterChapterIdx(stepIndex);
+          }
+        }
+      );
+    } catch (err) {
+      console.error("Audio playback error handled gracefully:", err);
+      setIsAnchorSpeaking(false);
+    }
   };
 
   const handleApplyCustomTopic = (
@@ -377,28 +599,39 @@ export default function App() {
       pillarSnapshot: updatedData
     };
 
+    const resolvedImg = getUniqueStoryImage(
+      updatedData.headline,
+      pillarId,
+      undefined,
+      customWireItem.id
+    );
+
+    const customStory: FutifyStoryItem = {
+      id: customWireItem.id,
+      pillarId,
+      categoryTag: updatedData.chipLabel,
+      headline: updatedData.headline,
+      subHook: updatedData.thunglishAnalogy[0],
+      posterImageUrl: resolvedImg.primaryUrl,
+      fallbackUnsplashUrl: resolvedImg.fallbackUnsplashUrl,
+      timestampBadge: nowIST,
+      probabilityBadge: '98% PROBABILITY',
+      keyMetricBadge: `${updatedData.telemetry[0].value} · ${updatedData.telemetry[0].label}`,
+      isJustIn: true,
+      pillarSnapshot: updatedData
+    };
+
+    setStories((prev) => [customStory, ...prev]);
+    setSelectedStoryId(customStory.id);
     setPillarsMap((prev) => ({
       ...prev,
       [pillarId]: updatedData
     }));
-    setActivePillar(pillarId);
     setEmotionOverride(null);
     setIncomingWire((prev) => [customWireItem, ...prev.slice(0, 19)]);
-    setSelectedWireId(customWireItem.id);
     setLastSyncedAt(nowIST);
     triggerAmbientCrossfade();
   };
-
-  const dominoChainChips: { pillar: NeatPillarId; label: string }[] = [
-    {
-      pillar: currentData.connectedSteps[0].fromPillar,
-      label: currentData.connectedSteps[0].fromChip
-    },
-    ...currentData.connectedSteps.map((s) => ({
-      pillar: s.toPillar,
-      label: s.toChip
-    }))
-  ];
 
   const progressPercentage = Math.max(
     0,
@@ -425,9 +658,10 @@ export default function App() {
         className="fixed inset-0 -z-10 overflow-hidden bg-[#050508]"
       >
         <img
-          key={`${activePillar}-${selectedWireId}-${ambientBackdrop.bgImage}`}
+          key={`${activePillar}-${selectedStoryId}-${ambientBackdrop.bgImage}`}
           src={ambientBackdrop.bgImage}
           alt={ambientBackdrop.atmosphereLabel}
+          referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.currentTarget;
             if (target.src !== ambientBackdrop.unsplashBgUrl) {
@@ -569,7 +803,7 @@ export default function App() {
                 </button>
               </div>
 
-              {/* [✦ Replay Intro] Button */}
+              {/* [✦ Intro] Button */}
               <button
                 type="button"
                 data-testid="replay-intro-btn"
@@ -577,7 +811,7 @@ export default function App() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-400/40 font-mono text-xs font-semibold text-rose-200 cursor-pointer whitespace-nowrap transition-colors"
               >
                 <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-                <span>✦ Replay Intro</span>
+                <span>✦ Intro</span>
               </button>
 
               {/* WhatsApp / Teams Broadcast */}
@@ -600,14 +834,15 @@ export default function App() {
                 <span className="hidden xl:inline">+ Custom Signal</span>
               </button>
 
-              {/* [🔍 Ask Futify AI] */}
+              {/* [🧠 Ask Carbon Mentor] */}
               <button
                 type="button"
+                data-testid="ask-carbon-mentor-btn"
                 onClick={() => setIsMentorDrawerOpen(true)}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-rose-500 to-cyan-500 hover:from-rose-400 hover:to-cyan-400 text-white font-display text-xs font-bold shadow-[0_0_25px_-5px_rgba(244,63,94,0.65)] cursor-pointer whitespace-nowrap transition-all"
               >
-                <Search className="w-3.5 h-3.5" />
-                <span>🔍 Ask Futify AI</span>
+                <BrainCircuit className="w-3.5 h-3.5" />
+                <span>🧠 Ask Carbon Mentor</span>
               </button>
             </div>
           </div>
@@ -701,9 +936,10 @@ export default function App() {
             {/* Full-Bleed High-Resolution Hero Backdrop Image */}
             <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
               <img
-                key={`hero-${activePillar}-${selectedWireId}-${ambientBackdrop.bgImage}`}
+                key={`hero-${activePillar}-${selectedStoryId}-${ambientBackdrop.bgImage}`}
                 src={ambientBackdrop.bgImage}
                 alt={currentData.headline}
+                referrerPolicy="no-referrer"
                 onError={(e) => {
                   const target = e.currentTarget;
                   if (target.src !== ambientBackdrop.unsplashBgUrl) {
@@ -780,16 +1016,25 @@ export default function App() {
                     </span>
                     <button
                       type="button"
-                      onClick={() => {
-                        void playThunglishVoiceover(
-                          `${currentData.thunglishAnalogy[0]} ${currentData.thunglishAnalogy[1]}`,
-                          `hero-voice-${currentData.id}`
-                        );
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 font-mono text-xs font-semibold text-cyan-200 cursor-pointer transition-colors"
+                      data-testid="listen-live-anchor-btn"
+                      onClick={handleToggleLiveAnchor}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-mono text-xs font-semibold cursor-pointer transition-all ${
+                        isAnchorSpeaking
+                          ? 'bg-rose-500/30 hover:bg-rose-500/40 border border-rose-400 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.4)]'
+                          : 'bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/50 text-cyan-200'
+                      }`}
                     >
-                      <Volume2 className="w-3.5 h-3.5 text-cyan-300" />
-                      <span>🔊 Listen in Thunglish</span>
+                      {isAnchorSpeaking ? (
+                        <>
+                          <VolumeX className="w-3.5 h-3.5 text-rose-300 animate-pulse" />
+                          <span>⏹ Stop Anchor Briefing</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="w-3.5 h-3.5 text-cyan-300" />
+                          <span>🔊 Listen Live Anchor</span>
+                        </>
+                      )}
                     </button>
                   </div>
 
@@ -799,6 +1044,30 @@ export default function App() {
                   <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                     {currentData.thunglishAnalogy[1]}
                   </p>
+
+                  {/* Prime-Time Anchor Live Broadcast Subtitle Marquee */}
+                  {isAnchorSpeaking && (
+                    <div
+                      data-testid="anchor-live-subtitle-box"
+                      className="p-3.5 rounded-xl bg-black/90 border border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.25)] space-y-1.5 animate-in fade-in duration-300"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-[11px] font-extrabold tracking-wider text-rose-400 uppercase flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                          {anchorStageDirection || '[🔴 ANCHOR ON AIR]'}
+                        </span>
+                        <div className="flex items-end gap-0.5 h-3">
+                          <span className="w-0.5 h-full bg-rose-400 animate-pulse" />
+                          <span className="w-0.5 h-2 bg-rose-400 animate-bounce" />
+                          <span className="w-0.5 h-3 bg-rose-400 animate-pulse" />
+                          <span className="w-0.5 h-1.5 bg-rose-400 animate-bounce" />
+                        </div>
+                      </div>
+                      <p className="font-sans text-xs sm:text-sm text-slate-100 font-medium leading-relaxed italic border-l-2 border-rose-500/60 pl-2">
+                        "{anchorLiveSubtitle || activeStoryItem.headline}"
+                      </p>
+                    </div>
+                  )}
 
                   {/* Explicit Country / Actor Pills */}
                   <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
@@ -852,6 +1121,24 @@ export default function App() {
                   >
                     <Crosshair className="w-4 h-4" />
                     <span>✦ X-Ray Breakdown</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="hero-mind-map-btn"
+                    onClick={() => {
+                      const el = document.getElementById('mind-map-view');
+                      if (el) {
+                        el.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start'
+                        });
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-cyan-600/90 hover:bg-cyan-500 text-white border border-cyan-400/50 font-display text-sm font-bold shadow-[0_0_25px_-5px_rgba(6,182,212,0.65)] cursor-pointer transition-all"
+                  >
+                    <Network className="w-4 h-4" />
+                    <span>🕸️ Mind Map View</span>
                   </button>
 
                   <button
@@ -912,10 +1199,7 @@ export default function App() {
               {/* Horizontal 16:9 Poster Row */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                 {row.cards.slice(0, 4).map((card) => {
-                  const isCurrent =
-                    card.id === selectedWireId ||
-                    (card.pillarId === activePillar &&
-                      card.id.endsWith('-primary'));
+                  const isCurrent = card.id === selectedStoryId;
                   const cardEmotion = detectNewsEmotion(card.pillarSnapshot);
 
                   return (
@@ -932,6 +1216,7 @@ export default function App() {
                       <img
                         src={card.posterImageUrl}
                         alt={card.headline}
+                        referrerPolicy="no-referrer"
                         onError={(e) => {
                           const target = e.currentTarget;
                           if (target.src !== card.fallbackUnsplashUrl) {
@@ -986,7 +1271,23 @@ export default function App() {
           ))}
         </section>
 
-        {/* 4. AMAZON PRIME "X-RAY" & APPLE VISION PRO SPATIAL HUD SECTION */}
+        {/* 4. INTERACTIVE VISUAL MIND MAP VIEW (100% BOUND TO ACTIVE STORY) */}
+        <div className="max-w-[1440px] mx-auto px-6 scroll-mt-24">
+          <InteractiveMindMapView
+            activeStory={currentData}
+            activeEmotion={activeEmotion}
+            onOpenMentor={(_prompt) => {
+              setIsMentorDrawerOpen(true);
+            }}
+            onPlayVideoBriefing={() => {
+              setTheaterChapterIdx(0);
+              setIsVideoTheaterMode(true);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        </div>
+
+        {/* 5. AMAZON PRIME "X-RAY" & APPLE VISION PRO SPATIAL HUD SECTION */}
         <div
           ref={xraySectionRef}
           className="max-w-[1440px] mx-auto px-6 scroll-mt-24"
@@ -1008,7 +1309,14 @@ export default function App() {
           ref={dojoSectionRef}
           className="max-w-[1440px] mx-auto px-6 space-y-6 scroll-mt-24"
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          {/* INTERACTIVE "CONNECT-THE-DOTS" PATTERN LAB (ACTIVELY LINK SECTOR NODES) */}
+          <InteractivePatternLab
+            currentData={currentData}
+            activePillar={activePillar}
+            onSelectPillar={handleSelectPillar}
+          />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
             {/* CARD 1: ⏳ Past ➔ Present ➔ Future Prediction Trajectory */}
             <section
               aria-label="Past Present Future Trajectory"
@@ -1016,7 +1324,7 @@ export default function App() {
             >
               <div className="border-b border-white/10 pb-3">
                 <h2 className="font-display text-lg font-bold text-white">
-                  ⏳ Pattern Trajectory
+                  ⏳ Past ➔ Present ➔ Future Trajectory
                 </h2>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">
                   ⏪ Past Root Cause ➔ ⏺️ Present Trigger ➔ ⏩ 24M Horizon
@@ -1070,70 +1378,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* CARD 2: 🔗 Cross-Pillar Domino Chain */}
-            <section
-              aria-label="Cross-Pillar Domino Chain"
-              className="rounded-2xl bg-[#090C15]/80 backdrop-blur-2xl border border-white/10 shadow-2xl p-6 flex flex-col justify-between space-y-4"
-            >
-              <div className="border-b border-white/10 pb-3 space-y-2.5">
-                <div>
-                  <h2 className="font-display text-lg font-bold text-white">
-                    🔗 Cross-Pillar Domino Chain
-                  </h2>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">
-                    Second-order ripple across global sectors
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1">
-                  {dominoChainChips.map((chip, idx) => (
-                    <React.Fragment key={`${chip.pillar}-${idx}`}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPillar(chip.pillar)}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold transition-colors cursor-pointer border whitespace-nowrap ${
-                          chip.pillar === activePillar
-                            ? 'bg-rose-500/20 border-rose-400/50 text-rose-200'
-                            : 'bg-black/50 border-white/10 text-slate-300 hover:border-white/30 hover:text-white'
-                        }`}
-                      >
-                        {chip.label}
-                      </button>
-                      {idx < dominoChainChips.length - 1 && (
-                        <ArrowRight className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2.5 flex-1 flex flex-col justify-between">
-                {currentData.connectedSteps.map((step) => (
-                  <div
-                    key={step.stepNumber}
-                    className="rounded-xl bg-black/45 border border-white/10 p-3.5 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between gap-1 text-[11px] font-mono">
-                      <span className="text-slate-300 font-semibold">
-                        {step.fromChip}
-                      </span>
-                      <ArrowRight className="w-3 h-3 text-rose-400 shrink-0" />
-                      <button
-                        type="button"
-                        onClick={() => handleSelectPillar(step.toPillar)}
-                        className="text-cyan-300 hover:text-cyan-200 font-semibold underline cursor-pointer"
-                      >
-                        {step.toChip}
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      {step.thunglishLine}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             {/* CARD 3: 🧠 Titan Winner vs. Legacy Failure & Book Mental Model */}
             <section
               aria-label="Winner vs Failure Autopsy and Book Mental Model"
@@ -1141,7 +1385,7 @@ export default function App() {
             >
               <div className="border-b border-white/10 pb-3">
                 <h2 className="font-display text-lg font-bold text-white">
-                  🧠 Titan vs. Failure Dojo
+                  🏆 Titan Winner vs. 💥 Failure Autopsy + Book Mental Model
                 </h2>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">
                   First-principles execution &amp; Book Mental Model
