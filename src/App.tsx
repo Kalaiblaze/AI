@@ -20,7 +20,9 @@ import {
   ExternalLink,
   Code2,
   Crosshair,
-  Network
+  Network,
+  Mic,
+  FileDown
 } from 'lucide-react';
 import {
   NEAT_PILLARS,
@@ -70,6 +72,11 @@ import {
   FutifyLogoMark,
   FutifySonicIntroOverlay
 } from './components/FutifyBrandAndIntro';
+import { GlobalSearchBar } from './components/GlobalSearchBar';
+import {
+  GroundedHeadlineResult,
+  buildStoryFromGroundedHeadline
+} from './engine/globalSearchEngine';
 import { SpatialXRayOverlay } from './components/SpatialXRayOverlay';
 import { InteractiveMindMapView } from './components/InteractiveMindMapView';
 import { InteractivePatternLab } from './components/InteractivePatternLab';
@@ -83,6 +90,31 @@ import {
   BroadcastIntegrationModal,
   AutoBroadcastConfig
 } from './components/BroadcastIntegrationModal';
+import { VoiceCommandOverlay } from './components/VoiceCommandOverlay';
+import {
+  VoiceCommandAction,
+  getNextStoryId
+} from './engine/voiceCommandEngine';
+import { MarketMomentumAlertsPanel } from './components/MarketMomentumAlertsPanel';
+import {
+  INITIAL_PILLAR_PROBABILITIES,
+  PillarProbabilityMap,
+  MomentumAlertItem,
+  computeSyncedProbability,
+  evaluateSyncMomentum,
+  mergeMomentumAlert
+} from './engine/momentumAlertsEngine';
+import { GlobalSentimentRadarPanel } from './components/GlobalSentimentRadarPanel';
+import { buildGlobalSentimentSnapshot } from './engine/globalSentimentRadarEngine';
+import {
+  PWAInstallButton,
+  OfflineIndicator
+} from './components/PWAInstallControl';
+import {
+  buildStructuredPillarReport,
+  triggerPdfReportDownload
+} from './engine/pdfReportEngine';
+import { PdfReportModal } from './components/PdfReportModal';
 
 const ACTOR_STANCE_STYLES: Record<
   ActorBreakdownItem['stance'],
@@ -136,8 +168,8 @@ export default function App() {
   const currentData: NeatPillarData = activeStoryItem.pillarSnapshot;
   const activePillar: NeatPillarId = activeStoryItem.pillarId;
 
-  // FUTIFY Cinema Sonic Intro Overlay State
-  const [isSonicIntroOpen, setIsSonicIntroOpen] = useState<boolean>(true);
+  // FUTIFY Cinema Sonic Intro Overlay State (default false so preview loads directly into terminal)
+  const [isSonicIntroOpen, setIsSonicIntroOpen] = useState<boolean>(false);
 
   // 60-Second Real-Time Auto-Sync Polling State
   const [secondsRemaining, setSecondsRemaining] = useState<number>(59);
@@ -162,6 +194,11 @@ export default function App() {
   const [isMentorDrawerOpen, setIsMentorDrawerOpen] = useState(false);
   const [isHtmlModalOpen, setIsHtmlModalOpen] = useState(false);
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
+  const [isPdfReportModalOpen, setIsPdfReportModalOpen] = useState(false);
+  const [lastPdfDownloadSize, setLastPdfDownloadSize] = useState<number | null>(
+    null
+  );
   const [broadcastConfig, setBroadcastConfig] = useState<AutoBroadcastConfig>({
     teamsWebhookUrl: '',
     teamsAutoSync: false,
@@ -186,18 +223,29 @@ export default function App() {
   const [anchorLiveSubtitle, setAnchorLiveSubtitle] = useState<string>('');
   const [voiceSpeed, setVoiceSpeed] = useState<number>(0.56);
 
+  // Live Market Momentum Probability & Surge Alerts (>10% single-sync jump)
+  const [pillarProbabilities, setPillarProbabilities] =
+    useState<PillarProbabilityMap>(() => ({ ...INITIAL_PILLAR_PROBABILITIES }));
+  const [momentumAlerts, setMomentumAlerts] = useState<MomentumAlertItem[]>([]);
+
   // Mount Self-Healing Watchdog Hook
   useFutifySelfHealingWatchdog();
 
   const rotationStepRef = useRef<number>(0);
   const syncLockRef = useRef<boolean>(false);
   const broadcastConfigRef = useRef<AutoBroadcastConfig>(broadcastConfig);
+  const pillarProbabilitiesRef =
+    useRef<PillarProbabilityMap>(pillarProbabilities);
   const xraySectionRef = useRef<HTMLDivElement | null>(null);
   const dojoSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     broadcastConfigRef.current = broadcastConfig;
   }, [broadcastConfig]);
+
+  useEffect(() => {
+    pillarProbabilitiesRef.current = pillarProbabilities;
+  }, [pillarProbabilities]);
 
   const detectedEmotion = detectNewsEmotion(currentData);
   const activeEmotion = emotionOverride
@@ -208,11 +256,39 @@ export default function App() {
     rssImageMap[activePillar]
   );
   const heroConfidence = HERO_CONFIDENCE_BY_PILLAR[activePillar];
+  const structuredPillarReport = useMemo(
+    () =>
+      buildStructuredPillarReport(
+        currentData,
+        activeStoryItem,
+        pillarProbabilities[activePillar] ?? 76,
+        lastSyncedAt
+      ),
+    [currentData, activeStoryItem, pillarProbabilities, activePillar, lastSyncedAt]
+  );
+
+  const handleDownloadPdfReport = useCallback(() => {
+    const info = triggerPdfReportDownload(structuredPillarReport);
+    setLastPdfDownloadSize(info.byteLength);
+    setIsPdfReportModalOpen(true);
+  }, [structuredPillarReport]);
+
   const swimlaneRows = buildFutifySwimlanes(
     pillarsMap,
     incomingWire,
     rssImageMap,
     stories
+  );
+
+  const globalSentimentSnapshot = useMemo(
+    () =>
+      buildGlobalSentimentSnapshot({
+        pillarsMap,
+        pillarProbabilities,
+        stories,
+        momentumAlerts
+      }),
+    [pillarsMap, pillarProbabilities, stories, momentumAlerts]
   );
 
   const triggerAmbientCrossfade = useCallback(() => {
@@ -244,153 +320,183 @@ export default function App() {
       let sourceBadge = 'JUST IN · LIVE WIRE';
 
       try {
-        const aiRes = await fetch('/api/live-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            pillarId: targetPillar,
-            pillarName: pillarConfig.shortName,
-            stepIndex
-          }),
-          signal: AbortSignal.timeout(2200)
+        try {
+          const aiRes = await fetch('/api/live-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pillarId: targetPillar,
+              pillarName: pillarConfig.shortName,
+              stepIndex
+            }),
+            signal: AbortSignal.timeout(2200)
+          });
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            if (aiData?.headline && String(aiData.headline).trim().length > 15) {
+              fetchedHeadline = String(aiData.headline).trim();
+              sourceBadge = aiData.sourceBadge || 'JUST IN · VERIFIED';
+            }
+            if (
+              aiData?.thumbnailUrl &&
+              /^https?:\/\/.+/i.test(aiData.thumbnailUrl)
+            ) {
+              fetchedRssThumb = String(aiData.thumbnailUrl).trim();
+            }
+            if (aiData?.articleUrl) {
+              fetchedArticleUrl = String(aiData.articleUrl).trim();
+            }
+            if (aiData?.trustedOutlet) {
+              fetchedOutlet = String(aiData.trustedOutlet).trim();
+            }
+            if (aiData?.publishedAt) {
+              fetchedPubDate = String(aiData.publishedAt).trim();
+            }
+          }
+        } catch {
+          // Deterministic fallback handled by synthesizeLiveWireDispatch
+        }
+
+        const { updatedPillar, wireItem } = synthesizeLiveWireDispatch(
+          targetPillar,
+          stepIndex,
+          fetchedHeadline,
+          sourceBadge
+        );
+
+        const prevProbability = pillarProbabilitiesRef.current[targetPillar] ?? 75;
+        const { nextProbability, catalystReason } = computeSyncedProbability({
+          pillarId: targetPillar,
+          prevProbability,
+          stepIndex,
+          headline: updatedPillar.headline,
+          hasLiveRssMatch: fetchedHeadline.length > 0,
+          telemetryVelocity: updatedPillar.telemetry[0]?.velocity
         });
 
-        if (aiRes.ok) {
-          const aiData = await aiRes.json();
-          if (aiData?.headline && String(aiData.headline).trim().length > 15) {
-            fetchedHeadline = String(aiData.headline).trim();
-            sourceBadge = aiData.sourceBadge || 'JUST IN · VERIFIED';
+        const { nextProbabilities, triggeredAlert } = evaluateSyncMomentum(
+          pillarProbabilitiesRef.current,
+          targetPillar,
+          nextProbability,
+          {
+            headline: updatedPillar.headline,
+            syncedAt: wireItem.timestampIST,
+            catalystReason
           }
-          if (
-            aiData?.thumbnailUrl &&
-            /^https?:\/\/.+/i.test(aiData.thumbnailUrl)
-          ) {
-            fetchedRssThumb = String(aiData.thumbnailUrl).trim();
-          }
-          if (aiData?.articleUrl) {
-            fetchedArticleUrl = String(aiData.articleUrl).trim();
-          }
-          if (aiData?.trustedOutlet) {
-            fetchedOutlet = String(aiData.trustedOutlet).trim();
-          }
-          if (aiData?.publishedAt) {
-            fetchedPubDate = String(aiData.publishedAt).trim();
-          }
+        );
+
+        pillarProbabilitiesRef.current = nextProbabilities;
+        setPillarProbabilities(nextProbabilities);
+        if (triggeredAlert) {
+          setMomentumAlerts((prev) => mergeMomentumAlert(prev, triggeredAlert, 4));
         }
-      } catch {
-        // Deterministic fallback handled by synthesizeLiveWireDispatch
-      }
 
-      const { updatedPillar, wireItem } = synthesizeLiveWireDispatch(
-        targetPillar,
-        stepIndex,
-        fetchedHeadline,
-        sourceBadge
-      );
+        const resolvedImg = getUniqueStoryImage(
+          wireItem.headline,
+          targetPillar,
+          undefined,
+          wireItem.id
+        );
 
-      const resolvedImg = getUniqueStoryImage(
-        wireItem.headline,
-        targetPillar,
-        undefined,
-        wireItem.id
-      );
+        const newStoryItem: FutifyStoryItem = {
+          id: wireItem.id,
+          pillarId: targetPillar,
+          categoryTag: wireItem.chipLabel,
+          headline: wireItem.headline,
+          subHook: updatedPillar.thunglishAnalogy[0],
+          posterImageUrl:
+            fetchedRssThumb && /^https?:\/\/.+/i.test(fetchedRssThumb)
+              ? fetchedRssThumb
+              : resolvedImg.primaryUrl,
+          fallbackUnsplashUrl: resolvedImg.fallbackUnsplashUrl,
+          timestampBadge: wireItem.timestampIST,
+          probabilityBadge: `${nextProbabilities[targetPillar]}% PROBABILITY`,
+          keyMetricBadge: wireItem.keyMetricBadge,
+          isJustIn: true,
+          pillarSnapshot: updatedPillar,
+          trustedArticle:
+            fetchedArticleUrl || fetchedOutlet
+              ? {
+                  articleUrl: fetchedArticleUrl,
+                  trustedOutlet: fetchedOutlet,
+                  publishedAt: fetchedPubDate
+                }
+              : undefined
+        };
 
-      const newStoryItem: FutifyStoryItem = {
-        id: wireItem.id,
-        pillarId: targetPillar,
-        categoryTag: wireItem.chipLabel,
-        headline: wireItem.headline,
-        subHook: updatedPillar.thunglishAnalogy[0],
-        posterImageUrl:
-          fetchedRssThumb && /^https?:\/\/.+/i.test(fetchedRssThumb)
-            ? fetchedRssThumb
-            : resolvedImg.primaryUrl,
-        fallbackUnsplashUrl: resolvedImg.fallbackUnsplashUrl,
-        timestampBadge: wireItem.timestampIST,
-        probabilityBadge: `${HERO_CONFIDENCE_BY_PILLAR[targetPillar].confidencePercent}% CONFIDENCE`,
-        keyMetricBadge: wireItem.keyMetricBadge,
-        isJustIn: true,
-        pillarSnapshot: updatedPillar,
-        trustedArticle:
-          fetchedArticleUrl || fetchedOutlet
-            ? {
-                articleUrl: fetchedArticleUrl,
-                trustedOutlet: fetchedOutlet,
-                publishedAt: fetchedPubDate
-              }
-            : undefined
-      };
-
-      // Prepend to stories pool so it appears in live wire, but NEVER overwrite selectedStoryId
-      setStories((prev) => [newStoryItem, ...prev.slice(0, 24)]);
-      setPillarsMap((prev) => ({
-        ...prev,
-        [targetPillar]: updatedPillar
-      }));
-
-      if (fetchedRssThumb) {
-        setRssImageMap((prev) => ({
+        // Prepend to stories pool so it appears in live wire, but NEVER overwrite selectedStoryId
+        setStories((prev) => [newStoryItem, ...prev.slice(0, 24)]);
+        setPillarsMap((prev) => ({
           ...prev,
-          [targetPillar]: fetchedRssThumb
+          [targetPillar]: updatedPillar
         }));
-      }
-      if (fetchedArticleUrl || fetchedOutlet) {
-        setTrustedSourceMap((prev) => ({
-          ...prev,
-          [targetPillar]: {
-            articleUrl: fetchedArticleUrl,
-            trustedOutlet: fetchedOutlet,
-            publishedAt: fetchedPubDate
-          }
-        }));
-      }
 
-      setIncomingWire((prev) => [wireItem, ...prev.slice(0, 19)]);
-      setLastSyncedAt(wireItem.timestampIST);
-      setSecondsRemaining(60);
-      setIsSyncingNow(false);
-      syncLockRef.current = false;
-
-      // Optional Auto-Broadcast to Microsoft Teams or WhatsApp Webhook Bridge
-      const activeBroadcast = broadcastConfigRef.current;
-      if (
-        activeBroadcast.teamsAutoSync &&
-        activeBroadcast.teamsWebhookUrl.trim().startsWith('http')
-      ) {
-        void fetch('/api/broadcast', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channel: 'teams',
-            webhookUrl: activeBroadcast.teamsWebhookUrl.trim(),
-            teamsPayload: buildTeamsAdaptiveCardPayload(updatedPillar)
-          })
-        }).catch(() => {});
-      }
-
-      if (
-        activeBroadcast.whatsappAutoSync &&
-        activeBroadcast.whatsappWebhookUrl.trim().startsWith('http')
-      ) {
-        void fetch('/api/broadcast', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            channel: 'whatsapp',
-            webhookUrl: activeBroadcast.whatsappWebhookUrl.trim(),
-            whatsappText: formatWhatsAppBriefing(updatedPillar),
-            pillarMeta: {
-              id: updatedPillar.id,
-              chipLabel: updatedPillar.chipLabel,
-              headline: updatedPillar.headline,
-              updatedAt: updatedPillar.updatedAt
+        if (fetchedRssThumb) {
+          setRssImageMap((prev) => ({
+            ...prev,
+            [targetPillar]: fetchedRssThumb
+          }));
+        }
+        if (fetchedArticleUrl || fetchedOutlet) {
+          setTrustedSourceMap((prev) => ({
+            ...prev,
+            [targetPillar]: {
+              articleUrl: fetchedArticleUrl,
+              trustedOutlet: fetchedOutlet,
+              publishedAt: fetchedPubDate
             }
-          })
-        }).catch(() => {});
-      }
+          }));
+        }
 
-      setIsStagePulsing(true);
-      setTimeout(() => setIsStagePulsing(false), 1100);
+        setIncomingWire((prev) => [wireItem, ...prev.slice(0, 19)]);
+        setLastSyncedAt(wireItem.timestampIST);
+        setSecondsRemaining(60);
+
+        // Optional Auto-Broadcast to Microsoft Teams or WhatsApp Webhook Bridge
+        const activeBroadcast = broadcastConfigRef.current;
+        if (
+          activeBroadcast.teamsAutoSync &&
+          activeBroadcast.teamsWebhookUrl.trim().startsWith('http')
+        ) {
+          void fetch('/api/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              channel: 'teams',
+              webhookUrl: activeBroadcast.teamsWebhookUrl.trim(),
+              teamsPayload: buildTeamsAdaptiveCardPayload(updatedPillar)
+            })
+          }).catch(() => {});
+        }
+
+        if (
+          activeBroadcast.whatsappAutoSync &&
+          activeBroadcast.whatsappWebhookUrl.trim().startsWith('http')
+        ) {
+          void fetch('/api/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              channel: 'whatsapp',
+              webhookUrl: activeBroadcast.whatsappWebhookUrl.trim(),
+              whatsappText: formatWhatsAppBriefing(updatedPillar),
+              pillarMeta: {
+                id: updatedPillar.id,
+                chipLabel: updatedPillar.chipLabel,
+                headline: updatedPillar.headline,
+                updatedAt: updatedPillar.updatedAt
+              }
+            })
+          }).catch(() => {});
+        }
+
+        setIsStagePulsing(true);
+        setTimeout(() => setIsStagePulsing(false), 1100);
+      } finally {
+        setIsSyncingNow(false);
+        syncLockRef.current = false;
+      }
     },
     []
   );
@@ -633,6 +739,185 @@ export default function App() {
     triggerAmbientCrossfade();
   };
 
+  const handlePullGroundedHeadline = (
+    item: GroundedHeadlineResult,
+    searchQuery: string
+  ) => {
+    const { story, wireItem, pillarData } = buildStoryFromGroundedHeadline(
+      item,
+      searchQuery
+    );
+
+    setStories((prev) => [story, ...prev]);
+    setSelectedStoryId(story.id);
+    setPillarsMap((prev) => ({
+      ...prev,
+      [item.pillarId]: pillarData
+    }));
+    if (story.trustedArticle) {
+      setTrustedSourceMap((prev) => ({
+        ...prev,
+        [item.pillarId]: story.trustedArticle
+      }));
+    }
+    setEmotionOverride(null);
+    setTheaterChapterIdx(0);
+    setIncomingWire((prev) => [wireItem, ...prev.slice(0, 19)]);
+    setLastSyncedAt(story.timestampBadge);
+    triggerAmbientCrossfade();
+    switchAudioIfSpeaking(story);
+    playSpatialReticleChime();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOpenVoiceCommand = useCallback(() => {
+    if (isAnchorSpeaking) {
+      hardStopVoiceEngine();
+      setIsAnchorSpeaking(false);
+      setAnchorStageDirection('');
+      setAnchorLiveSubtitle('');
+    }
+    setIsVoiceOverlayOpen(true);
+  }, [isAnchorSpeaking]);
+
+  useEffect(() => {
+    const onGlobalKey = (e: KeyboardEvent) => {
+      if (isSonicIntroOpen) return;
+      const tag = document.activeElement?.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        (document.activeElement as HTMLElement | null)?.isContentEditable
+      ) {
+        return;
+      }
+      if ((e.key === 'v' || e.key === 'V') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        if (isVoiceOverlayOpen) {
+          setIsVoiceOverlayOpen(false);
+        } else {
+          handleOpenVoiceCommand();
+        }
+      }
+    };
+    window.addEventListener('keydown', onGlobalKey);
+    return () => window.removeEventListener('keydown', onGlobalKey);
+  }, [isSonicIntroOpen, isVoiceOverlayOpen, handleOpenVoiceCommand]);
+
+  const handleExecuteVoiceCommand = useCallback(
+    (action: VoiceCommandAction): boolean => {
+      switch (action.type) {
+        case 'NAVIGATE_PILLAR': {
+          setActiveNavFilter(action.pillarId);
+          handleSelectPillar(action.pillarId);
+          setIsVideoTheaterMode(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return true;
+        }
+        case 'NAVIGATE_HOME': {
+          setActiveNavFilter('HOME');
+          setIsVideoTheaterMode(false);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return true;
+        }
+        case 'NEXT_STORY':
+        case 'PREVIOUS_STORY': {
+          const targetId = getNextStoryId(
+            stories,
+            activeStoryItem.id,
+            action.type === 'NEXT_STORY' ? 'next' : 'prev'
+          );
+          if (!targetId) return false;
+          const nextStory = stories.find((s) => s.id === targetId);
+          if (!nextStory) return false;
+          setSelectedStoryId(nextStory.id);
+          setActiveNavFilter(nextStory.pillarId);
+          switchAudioIfSpeaking(nextStory);
+          setEmotionOverride(null);
+          setTheaterChapterIdx(0);
+          triggerAmbientCrossfade();
+          playSpatialReticleChime();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return true;
+        }
+        case 'SELECT_STORY_INDEX': {
+          const target = stories[action.index];
+          if (!target) return false;
+          setSelectedStoryId(target.id);
+          setActiveNavFilter(target.pillarId);
+          switchAudioIfSpeaking(target);
+          setEmotionOverride(null);
+          setTheaterChapterIdx(0);
+          triggerAmbientCrossfade();
+          playSpatialReticleChime();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return true;
+        }
+        case 'SELECT_STORY_BY_KEYWORD': {
+          const target = stories.find((s) => s.id === action.storyId);
+          if (!target) return false;
+          setSelectedStoryId(target.id);
+          setActiveNavFilter(target.pillarId);
+          switchAudioIfSpeaking(target);
+          setEmotionOverride(null);
+          setTheaterChapterIdx(0);
+          triggerAmbientCrossfade();
+          playSpatialReticleChime();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return true;
+        }
+        case 'OPEN_VIEW': {
+          if (action.view === 'THEATER') {
+            setTheaterChapterIdx(0);
+            setIsVideoTheaterMode(true);
+            return true;
+          }
+          if (action.view === 'MENTOR') {
+            setIsMentorDrawerOpen(true);
+            return true;
+          }
+          if (action.view === 'ANCHOR_PLAY') {
+            if (!isAnchorSpeaking) {
+              void handleToggleLiveAnchor();
+            }
+            return true;
+          }
+          if (action.view === 'ANCHOR_STOP') {
+            hardStopVoiceEngine();
+            setIsAnchorSpeaking(false);
+            setAnchorStageDirection('');
+            setAnchorLiveSubtitle('');
+            return true;
+          }
+          setIsVideoTheaterMode(false);
+          setTimeout(() => {
+            if (action.view === 'XRAY') {
+              xraySectionRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center'
+              });
+              playSpatialReticleChime();
+            } else if (action.view === 'MIND_MAP') {
+              document
+                .getElementById('mind-map-view')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else if (action.view === 'DOJO') {
+              dojoSectionRef.current?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+              });
+            }
+          }, 80);
+          return true;
+        }
+        default:
+          return false;
+      }
+    },
+    [stories, activeStoryItem.id, isAnchorSpeaking, triggerAmbientCrossfade]
+  );
+
   const progressPercentage = Math.max(
     0,
     Math.min(100, ((60 - secondsRemaining) / 60) * 100)
@@ -688,11 +973,11 @@ export default function App() {
       </div>
 
       {/* 1. FIXED TRANSLUCENT STREAMING NAVBAR (FUTIFY // SEE TOMORROW FIRST) */}
-      <header className="sticky top-0 z-50 bg-gradient-to-b from-black/95 via-black/80 to-black/40 backdrop-blur-2xl border-b border-white/[0.08]">
-        <div className="max-w-[1440px] mx-auto px-6 py-3 flex flex-col gap-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+      <header className="relative sm:sticky sm:top-0 z-50 bg-gradient-to-b from-black/95 via-black/80 to-black/40 backdrop-blur-2xl border-b border-white/[0.08]">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-col gap-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 min-w-0">
             {/* Left: Custom FUTIFY SVG Prism Logo + Category Links */}
-            <div className="flex flex-wrap items-center gap-6">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6 min-w-0 max-w-full">
               <a
                 href="#top"
                 onClick={(e) => {
@@ -719,7 +1004,7 @@ export default function App() {
               {/* Streaming Category Navigation Links */}
               <nav
                 aria-label="FUTIFY Category Navigation"
-                className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
+                className="flex items-center gap-1.5 overflow-x-auto pb-0.5 min-w-0 max-w-full"
               >
                 {NAV_CATEGORIES.map((cat) => {
                   const isSelected =
@@ -750,8 +1035,8 @@ export default function App() {
               </nav>
             </div>
 
-            {/* Right: 🟢 60s Live Auto-Sync Pill + Replay Intro + Broadcast + Ask Futify AI */}
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* Right: 🟢 60s Live Auto-Sync Pill + Replay Intro + Broadcast + Install + Ask Futify AI */}
+            <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
               {/* 60s Live Auto-Sync Countdown Pill */}
               <div
                 role="region"
@@ -834,6 +1119,37 @@ export default function App() {
                 <span className="hidden xl:inline">+ Custom Signal</span>
               </button>
 
+              {/* Voice Navigation Trigger */}
+              <button
+                type="button"
+                data-testid="voice-command-trigger"
+                aria-label="Activate hands-free voice command navigation"
+                onClick={handleOpenVoiceCommand}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-mono text-xs font-semibold cursor-pointer whitespace-nowrap transition-colors ${
+                  isVoiceOverlayOpen
+                    ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-[0_0_16px_rgba(34,211,238,0.45)]'
+                    : 'bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-400/40 text-cyan-200'
+                }`}
+              >
+                <Mic className="w-3.5 h-3.5 text-cyan-300" />
+                <span>Voice Nav</span>
+              </button>
+
+              {/* Cross-Platform PWA Install (Linux & Android) */}
+              <PWAInstallButton />
+
+              {/* Download Structured Pillar Report as PDF */}
+              <button
+                type="button"
+                data-testid="navbar-download-pdf-btn"
+                onClick={handleDownloadPdfReport}
+                title="Download structured PDF report for current pillar"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-400/40 font-mono text-xs font-semibold text-amber-200 cursor-pointer whitespace-nowrap transition-colors"
+              >
+                <FileDown className="w-3.5 h-3.5 text-amber-300" />
+                <span>PDF Report</span>
+              </button>
+
               {/* [🧠 Ask Carbon Mentor] */}
               <button
                 type="button"
@@ -847,56 +1163,60 @@ export default function App() {
             </div>
           </div>
 
-          {/* Compact Emotion Aura Strip */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/[0.06] text-[11px]">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono uppercase tracking-wider text-slate-400">
-                🎨 Live Emotion Aura:
-              </span>
-              <span
-                data-testid="active-emotion-badge"
-                className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border font-mono text-[11px] font-bold transition-all duration-500 ${activeEmotion.badgeClass}`}
-              >
-                <span>{activeEmotion.badgeLabel}</span>
-                <span className="opacity-75">
-                  · {activeEmotion.intensityScore}%
-                </span>
-              </span>
-              <span className="text-slate-400 hidden lg:inline">
-                {activeEmotion.emotionSummary}
-              </span>
-            </div>
+          {/* Global Search Grounding Bar + Compact Emotion Aura Strip */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-2 border-t border-white/[0.06] text-[11px]">
+            <GlobalSearchBar
+              activePillar={activePillar}
+              onPullGroundedHeadline={handlePullGroundedHeadline}
+            />
 
-            <div className="flex flex-wrap items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setEmotionOverride(null)}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border transition-all cursor-pointer whitespace-nowrap ${
-                  emotionOverride === null
-                    ? 'bg-white/15 border-white/40 text-white'
-                    : 'bg-black/40 border-white/10 text-slate-400 hover:text-white'
-                }`}
-              >
-                Auto ({detectedEmotion.shortLabel})
-              </button>
-              {EMOTION_ORDER.map((emoId) => {
-                const emo = NEWS_EMOTION_THEMES[emoId];
-                const isSelected = activeEmotion.id === emoId;
-                return (
-                  <button
-                    key={emoId}
-                    type="button"
-                    onClick={() => setEmotionOverride(emoId)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border transition-all cursor-pointer whitespace-nowrap ${
-                      isSelected
-                        ? emo.badgeClass
-                        : 'bg-black/30 border-white/[0.07] text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {emo.shortLabel}
-                  </button>
-                );
-              })}
+            <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono uppercase tracking-wider text-slate-400">
+                  🎨 Live Aura:
+                </span>
+                <span
+                  data-testid="active-emotion-badge"
+                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded border font-mono text-[11px] font-bold transition-all duration-500 ${activeEmotion.badgeClass}`}
+                >
+                  <span>{activeEmotion.badgeLabel}</span>
+                  <span className="opacity-75">
+                    · {activeEmotion.intensityScore}%
+                  </span>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setEmotionOverride(null)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border transition-all cursor-pointer whitespace-nowrap ${
+                    emotionOverride === null
+                      ? 'bg-white/15 border-white/40 text-white'
+                      : 'bg-black/40 border-white/10 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Auto ({detectedEmotion.shortLabel})
+                </button>
+                {EMOTION_ORDER.map((emoId) => {
+                  const emo = NEWS_EMOTION_THEMES[emoId];
+                  const isSelected = activeEmotion.id === emoId;
+                  return (
+                    <button
+                      key={emoId}
+                      type="button"
+                      onClick={() => setEmotionOverride(emoId)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border transition-all cursor-pointer whitespace-nowrap ${
+                        isSelected
+                          ? emo.badgeClass
+                          : 'bg-black/30 border-white/[0.07] text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {emo.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -929,7 +1249,7 @@ export default function App() {
           <section
             aria-label="FUTIFY Hero Billboard Stage"
             data-testid="futify-hero-billboard"
-            className={`relative w-full min-h-[78vh] flex items-center overflow-hidden border-b border-white/10 transition-all duration-700 ${
+            className={`relative w-full min-h-[72vh] flex items-center overflow-hidden border-b border-white/10 transition-all duration-700 ${
               isStagePulsing ? 'ring-2 ring-rose-500/60' : ''
             }`}
           >
@@ -954,9 +1274,9 @@ export default function App() {
             </div>
 
             {/* Hero Billboard Foreground Content */}
-            <div className="max-w-[1440px] mx-auto w-full px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
+            <div className="max-w-[1440px] mx-auto w-full px-6 py-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               {/* Left 8 Columns: Monumental Cinema Headline, Prediction Badge, Thunglish Hook & 3 Primary Action Buttons */}
-              <div className="lg:col-span-8 space-y-6">
+              <div className="lg:col-span-8 space-y-5">
                 {/* Top Prediction & Verified Source Badges */}
                 <div className="flex flex-wrap items-center gap-2.5">
                   <span
@@ -1092,8 +1412,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 3 Primary Action Buttons: [▶ Play Visual Briefing], [✦ X-Ray Breakdown], [🧠 Titan vs. Failure Dojo] */}
-                <div className="flex flex-wrap items-center gap-3.5 pt-1">
+                {/* Primary Action Buttons: Visual Briefing, X-Ray, Mind Map, Dojo, Download Report as PDF */}
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
                   <button
                     type="button"
                     data-testid="toggle-visual-briefing-btn"
@@ -1101,9 +1421,9 @@ export default function App() {
                       setTheaterChapterIdx(0);
                       setIsVideoTheaterMode(true);
                     }}
-                    className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-display text-sm font-extrabold tracking-tight shadow-[0_0_30px_rgba(255,255,255,0.4)] cursor-pointer transition-all"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-200 text-slate-950 font-display text-xs sm:text-[13px] font-extrabold tracking-tight shadow-[0_0_30px_rgba(255,255,255,0.4)] cursor-pointer whitespace-nowrap transition-all"
                   >
-                    <Play className="w-4 h-4 fill-slate-950" />
+                    <Play className="w-3.5 h-3.5 fill-slate-950" />
                     <span>▶ Play Visual Briefing</span>
                   </button>
 
@@ -1117,9 +1437,9 @@ export default function App() {
                       });
                       playSpatialReticleChime();
                     }}
-                    className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/50 font-display text-sm font-bold shadow-[0_0_25px_-5px_rgba(244,63,94,0.65)] cursor-pointer transition-all"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white border border-rose-400/50 font-display text-xs sm:text-[13px] font-bold shadow-[0_0_25px_-5px_rgba(244,63,94,0.65)] cursor-pointer whitespace-nowrap transition-all"
                   >
-                    <Crosshair className="w-4 h-4" />
+                    <Crosshair className="w-3.5 h-3.5" />
                     <span>✦ X-Ray Breakdown</span>
                   </button>
 
@@ -1135,9 +1455,9 @@ export default function App() {
                         });
                       }
                     }}
-                    className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-cyan-600/90 hover:bg-cyan-500 text-white border border-cyan-400/50 font-display text-sm font-bold shadow-[0_0_25px_-5px_rgba(6,182,212,0.65)] cursor-pointer transition-all"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-cyan-600/90 hover:bg-cyan-500 text-white border border-cyan-400/50 font-display text-xs sm:text-[13px] font-bold shadow-[0_0_25px_-5px_rgba(6,182,212,0.65)] cursor-pointer whitespace-nowrap transition-all"
                   >
-                    <Network className="w-4 h-4" />
+                    <Network className="w-3.5 h-3.5" />
                     <span>🕸️ Mind Map View</span>
                   </button>
 
@@ -1150,19 +1470,47 @@ export default function App() {
                         block: 'start'
                       });
                     }}
-                    className="inline-flex items-center gap-2 px-5 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 text-white font-display text-sm font-bold cursor-pointer transition-all"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 text-white font-display text-xs sm:text-[13px] font-bold cursor-pointer whitespace-nowrap transition-all"
                   >
-                    <BrainCircuit className="w-4 h-4 text-cyan-300" />
+                    <BrainCircuit className="w-3.5 h-3.5 text-cyan-300" />
                     <span>🧠 Titan vs. Failure Dojo</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="download-pdf-report-btn"
+                    onClick={handleDownloadPdfReport}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-amber-100 font-display text-xs sm:text-[13px] font-bold shadow-[0_0_25px_-5px_rgba(245,158,11,0.5)] cursor-pointer whitespace-nowrap transition-all"
+                  >
+                    <FileDown className="w-3.5 h-3.5 text-amber-300" />
+                    <span>📄 Download Report as PDF</span>
                   </button>
                 </div>
               </div>
 
-              {/* Right 4 Columns: Live 7-Day Telemetry Sparkline Stack */}
+              {/* Right 4 Columns: Market Momentum Alerts + Live 7-Day Telemetry Sparkline Stack */}
               <div
                 aria-label="Key Numeric Metrics"
-                className="lg:col-span-4 space-y-3"
+                className="lg:col-span-4 space-y-2.5"
               >
+                <MarketMomentumAlertsPanel
+                  alerts={momentumAlerts}
+                  pillarProbabilities={pillarProbabilities}
+                  activePillar={activePillar}
+                  isSyncing={isSyncingNow}
+                  lastSyncedAt={lastSyncedAt}
+                  onTriggerSyncCheck={() => void triggerLiveMinuteUpdate(activePillar)}
+                  onSelectPillar={(pid) => {
+                    setActiveNavFilter(pid);
+                    handleSelectPillar(pid);
+                  }}
+                  onDismissAlert={(alertId) =>
+                    setMomentumAlerts((prev) =>
+                      prev.filter((item) => item.id !== alertId)
+                    )
+                  }
+                  onClearAllAlerts={() => setMomentumAlerts([])}
+                />
                 {currentData.telemetry.map((stat, idx) => (
                   <MetricSparklineCard key={idx} stat={stat} index={idx} />
                 ))}
@@ -1270,6 +1618,20 @@ export default function App() {
             </div>
           ))}
         </section>
+
+        {/* 3B. GLOBAL SENTIMENT ANALYSIS // D3 5-PILLAR EMOTIONAL INTENSITY RADAR */}
+        <div className="max-w-[1440px] mx-auto px-6 scroll-mt-44">
+          <GlobalSentimentRadarPanel
+            snapshot={globalSentimentSnapshot}
+            activePillar={activePillar}
+            onSelectPillar={(pid) => {
+              setActiveNavFilter(pid);
+              handleSelectPillar(pid);
+              setIsVideoTheaterMode(false);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        </div>
 
         {/* 4. INTERACTIVE VISUAL MIND MAP VIEW (100% BOUND TO ACTIVE STORY) */}
         <div className="max-w-[1440px] mx-auto px-6 scroll-mt-24">
@@ -1493,14 +1855,26 @@ export default function App() {
               Spatial X-Ray Intelligence
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsHtmlModalOpen(true)}
-            className="inline-flex items-center gap-1.5 text-slate-300 hover:text-rose-300 transition-colors cursor-pointer font-mono"
-          >
-            <Code2 className="w-4 h-4 text-rose-400" />
-            <span>Export Single-File HTML</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              data-testid="footer-download-pdf-btn"
+              onClick={handleDownloadPdfReport}
+              className="inline-flex items-center gap-1.5 text-amber-300 hover:text-amber-200 transition-colors cursor-pointer font-mono"
+            >
+              <FileDown className="w-4 h-4 text-amber-400" />
+              <span>Download Report as PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsHtmlModalOpen(true)}
+              className="inline-flex items-center gap-1.5 text-slate-300 hover:text-rose-300 transition-colors cursor-pointer font-mono"
+            >
+              <Code2 className="w-4 h-4 text-rose-400" />
+              <span>Export Single-File HTML</span>
+            </button>
+          </div>
         </footer>
       </main>
 
@@ -1525,6 +1899,15 @@ export default function App() {
         onClose={() => setIsHtmlModalOpen(false)}
       />
 
+      {/* Structured PDF Intelligence Report Preview & Download Modal */}
+      <PdfReportModal
+        isOpen={isPdfReportModalOpen}
+        report={structuredPillarReport}
+        lastDownloadSize={lastPdfDownloadSize}
+        onClose={() => setIsPdfReportModalOpen(false)}
+        onRedownload={(info) => setLastPdfDownloadSize(info.byteLength)}
+      />
+
       {/* WhatsApp Group & Microsoft Teams Channel Integration Modal */}
       <BroadcastIntegrationModal
         isOpen={isBroadcastModalOpen}
@@ -1533,6 +1916,19 @@ export default function App() {
         config={broadcastConfig}
         onUpdateConfig={setBroadcastConfig}
       />
+
+      {/* Web Speech API Voice-Command Listening State Overlay */}
+      <VoiceCommandOverlay
+        isOpen={isVoiceOverlayOpen}
+        stories={stories}
+        activePillarName={NEAT_PILLARS[activePillar]?.shortName || activePillar}
+        activeHeadline={activeStoryItem.headline}
+        onClose={() => setIsVoiceOverlayOpen(false)}
+        onExecuteCommand={handleExecuteVoiceCommand}
+      />
+
+      {/* Offline Connectivity Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }

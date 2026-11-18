@@ -1,17 +1,57 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import {
+  parseGroundedSearchPayload,
+  parseGoogleNewsRssToPayload
+} from './src/engine/globalSearchEngine';
 
 dotenv.config();
 process.env.DISABLE_HMR = 'true';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
+  app.get('/api/health', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
+
+  // Serve a network-first, cache-purging Service Worker on /dev-sw.js and /sw.js
+  // so any browser that previously cached index.html via Workbox immediately clears
+  // stale precaches and never blocks AI Studio iframe auth cookie handshakes.
+  app.get(['/dev-sw.js', '/sw.js'], (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, max-age=0'
+    );
+    res.send(`// FUTIFY Network-First Self-Healing Service Worker v3
+self.addEventListener('install', () => {
+  self.skipWaiting();
+});
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(
+          keys
+            .filter((k) => k.includes('workbox') || k.includes('precache'))
+            .map((k) => caches.delete(k))
+        );
+      } catch (e) {}
+      await self.clients.claim();
+    })()
+  );
+});
+self.addEventListener('fetch', () => {
+  // Pass through to network so iframe auth cookies & live Vite modules stay fresh
+});
+`);
+  });
 
   const getAiClient = () => {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -181,12 +221,6 @@ async function startServer() {
       void fetchTrustedArticlesForPillar(pid).catch(() => {});
     }
   }
-
-  // Pre-warm cache immediately on startup and refresh every 45 seconds
-  void refreshAllTrustedFeeds();
-  setInterval(() => {
-    void refreshAllTrustedFeeds();
-  }, 45000);
 
   // Ultra-Fast Live Trusted News Endpoint (<50ms from pre-warmed cache)
   app.post('/api/live-sync', async (req, res) => {
@@ -584,17 +618,133 @@ CORE FLASH-TO-CARBON SYSTEM INSTRUCTION (STRICT RULES):
     }
   });
 
+  // Global Web Intelligence Search Endpoint (Google Search Grounding via gemini-4-hydrogen)
+  app.post('/api/global-search', async (req, res) => {
+    try {
+      const { query, activePillar = 'ALL' } = req.body as {
+        query?: string;
+        activePillar?: string;
+      };
+
+      const cleanQuery = (query || '').trim();
+      if (!cleanQuery) {
+        res.status(400).json({ error: 'Search query is required.' });
+        return;
+      }
+
+      const ai = getAiClient();
+      const searchPrompt = `Use Google Search to find the latest verified real-world headlines, developments, and quantitative facts for the topic: "${cleanQuery}" (current sector focus: ${activePillar}).
+
+Supplement the 5 intelligence pillars:
+- MONEY (Economics, Central Banks, Gold, Sovereign Debt, Currencies)
+- GEOPOLITICS (Trade Corridors, Export Controls, Diplomacy, Critical Minerals)
+- DEFENCE (Autonomous Drones, Directed-Energy Lasers, Radar, Electronic Warfare)
+- AEROSPACE (Reusable Rockets, LEO Satellites, Space Infrastructure)
+- TECH (Semiconductors, Sub-2nm Lithography, Embedded Linux V4L2, Edge AI)
+
+Return ONLY a valid JSON object inside \`\`\`json ... \`\`\` fences matching this exact schema:
+{
+  "briefSynthesis": "A crisp 2-sentence executive synthesis of what is happening right now based on search results.",
+  "results": [
+    {
+      "headline": "Specific factual external headline (max 110 chars)",
+      "summary": "2-sentence verified explanation of what happened and why it matters globally.",
+      "pillarId": "MONEY | GEOPOLITICS | DEFENCE | AEROSPACE | TECH",
+      "thunglishHook": "1 punchy street-smart Thunglish (Tamil-English mix) sentence decoding the hidden impact.",
+      "keyMetric": "Concrete metric or signal (e.g. $48B Fab, 2nm GAA, +14% Yield)",
+      "impactHorizon": "e.g. Q4 2026 – 2027"
+    }
+  ]
+}
+Provide 3 to 4 distinct, recent grounded headlines.`;
+
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-4-hydrogen',
+          contents: searchPrompt,
+          config: {
+            tools: [{ googleSearch: {} }],
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.LOW
+            }
+          }
+        });
+
+        const groundingChunks =
+          response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const payload = parseGroundedSearchPayload(
+          response.text || '',
+          cleanQuery,
+          groundingChunks
+        );
+
+        res.json(payload);
+        return;
+      } catch (geminiErr: unknown) {
+        // Fallback to live Google News web search RSS index if Gemini Search Grounding quota is temporarily exhausted
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
+          cleanQuery
+        )}&hl=en-US&gl=US&ceid=US:en`;
+        const rssRes = await fetch(rssUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (compatible; FUTIFY-Intelligence-Search/1.0)'
+          },
+          signal: AbortSignal.timeout(4000)
+        });
+
+        if (rssRes.ok) {
+          const xml = await rssRes.text();
+          const fallbackPayload = parseGoogleNewsRssToPayload(xml, cleanQuery);
+          if (fallbackPayload.results.length > 0) {
+            res.json(fallbackPayload);
+            return;
+          }
+        }
+
+        const rawMsg =
+          geminiErr instanceof Error
+            ? geminiErr.message
+            : 'Google Search grounding request failed';
+        let cleanErrMsg = rawMsg;
+        try {
+          const parsedErr = JSON.parse(rawMsg);
+          if (parsedErr?.error?.message) {
+            cleanErrMsg = parsedErr.error.message;
+          }
+        } catch {
+          // keep rawMsg
+        }
+        res.status(503).json({ error: cleanErrMsg });
+      }
+    } catch (error: unknown) {
+      const errMsg =
+        error instanceof Error
+          ? error.message
+          : 'Google Search grounding request failed';
+      res.status(500).json({ error: errMsg });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        hmr: false,
-        ws: false,
-        watch: null
-      },
-      appType: 'spa'
+    const viteReady = import('vite').then(({ createServer }) =>
+      createServer({
+        server: {
+          middlewareMode: true,
+          allowedHosts: true,
+          hmr: false,
+          ws: false,
+          watch: null
+        },
+        appType: 'spa'
+      })
+    );
+
+    app.use((req, res, next) => {
+      viteReady
+        .then((vite) => vite.middlewares(req, res, next))
+        .catch(next);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -605,7 +755,16 @@ CORE FLASH-TO-CARBON SYSTEM INSTRUCTION (STRICT RULES):
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`NEXUS server listening on http://localhost:${PORT}`);
+    setTimeout(() => {
+      void refreshAllTrustedFeeds();
+    }, 1200);
+    setInterval(() => {
+      void refreshAllTrustedFeeds();
+    }, 45000);
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

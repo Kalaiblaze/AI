@@ -2,7 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#050508" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FUTIFY" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
       (function () {
         var OrigWebSocket = window.WebSocket;
@@ -32,11 +39,22 @@
             : new OrigWebSocket(url);
         }
         SafeWebSocket.prototype = OrigWebSocket.prototype;
-        SafeWebSocket.CONNECTING = OrigWebSocket.CONNECTING;
-        SafeWebSocket.OPEN = OrigWebSocket.OPEN;
-        SafeWebSocket.CLOSING = OrigWebSocket.CLOSING;
-        SafeWebSocket.CLOSED = OrigWebSocket.CLOSED;
+        ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'].forEach(function (k) {
+          Object.defineProperty(SafeWebSocket, k, {
+            value: OrigWebSocket[k],
+            enumerable: false
+          });
+        });
         window.WebSocket = SafeWebSocket;
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) {
+              if (k.indexOf('workbox') !== -1 || k.indexOf('precache') !== -1) {
+                caches.delete(k);
+              }
+            });
+          }).catch(function () {});
+        }
       })();
     </script>
     <title>CARBON-PULSE // Global &amp; Embedded Intelligence Terminal</title>

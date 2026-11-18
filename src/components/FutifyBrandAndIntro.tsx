@@ -109,16 +109,19 @@ interface FutifySonicIntroOverlayProps {
 export const FutifySonicIntroOverlay: React.FC<
   FutifySonicIntroOverlayProps
 > = ({ isOpen, onComplete }) => {
+  const onCompleteRef = React.useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   useEffect(() => {
     if (!isOpen) return;
     playFutifyTaDumSonic();
 
     const timer = setTimeout(() => {
-      onComplete();
-    }, 2650);
+      onCompleteRef.current();
+    }, 2400);
 
     return () => clearTimeout(timer);
-  }, [isOpen, onComplete]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
