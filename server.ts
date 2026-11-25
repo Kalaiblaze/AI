@@ -9,6 +9,9 @@ import {
 
 dotenv.config();
 process.env.DISABLE_HMR = 'true';
+if (process.argv.includes('--production')) {
+  process.env.NODE_ENV = 'production';
+}
 
 const CHAT_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.5-flash';
 const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
@@ -701,11 +704,7 @@ Provide 3 to 4 distinct, recent grounded headlines.`;
     }
   });
 
-  const isProduction =
-    process.env.NODE_ENV === 'production' ||
-    process.argv.includes('--production');
-
-  if (!isProduction) {
+  if (process.env.NODE_ENV !== 'production') {
     const viteReady = import('vite').then(({ createServer }) =>
       createServer({
         server: {
