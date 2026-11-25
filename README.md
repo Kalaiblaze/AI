@@ -19,7 +19,7 @@ cp .env.example .env # then set GEMINI_API_KEY (optional, see below)
 | --------------- | -------------------------------------------------------------- |
 | `npm run dev`   | Express + Vite dev server on http://localhost:3000             |
 | `npm run build` | Production build into `dist/`                                  |
-| `npm start`     | Serve the production build (`NODE_ENV=production`), run `build` first |
+| `npm start`     | Serve the production build from `dist/` (run `build` first) |
 | `npm run lint`  | Type-check with `tsc --noEmit`                                 |
 | `npm test`      | Run the engine unit tests (`node:test` via `tsx`)              |
 

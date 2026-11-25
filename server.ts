@@ -701,7 +701,11 @@ Provide 3 to 4 distinct, recent grounded headlines.`;
     }
   });
 
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    process.argv.includes('--production');
+
+  if (!isProduction) {
     const viteReady = import('vite').then(({ createServer }) =>
       createServer({
         server: {
