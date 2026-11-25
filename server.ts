@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 import {
   parseGroundedSearchPayload,
   parseGoogleNewsRssToPayload
@@ -9,6 +9,19 @@ import {
 
 dotenv.config();
 process.env.DISABLE_HMR = 'true';
+if (process.argv.includes('--production')) {
+  process.env.NODE_ENV = 'production';
+}
+
+const CHAT_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.5-flash';
+const SEARCH_MODEL = process.env.GEMINI_SEARCH_MODEL || 'gemini-2.5-flash';
+const TTS_MODELS = (
+  process.env.GEMINI_TTS_MODELS ||
+  'gemini-2.5-flash-preview-tts,gemini-2.5-pro-preview-tts'
+)
+  .split(',')
+  .map((m) => m.trim())
+  .filter(Boolean);
 
 async function startServer() {
   const app = express();
@@ -325,7 +338,7 @@ self.addEventListener('fetch', () => {
   // In-memory TTS audio cache so repeated video scenes play instantaneously
   const ttsAudioCache = new Map<string, string>();
 
-  // Server-Side Gemini 3.8 TTS Endpoint for Crisp Female Thunglish Video Narration
+  // Server-Side Gemini TTS Endpoint for Crisp Female Thunglish Video Narration
   app.post('/api/tts-briefing', async (req, res) => {
     try {
       const { text, cacheKey } = req.body as {
@@ -349,62 +362,39 @@ self.addEventListener('fetch', () => {
       const ai = getAiClient();
       let base64Audio: string | undefined;
 
-      try {
-        const ttsRes = await ai.models.generateContent({
-          model: 'gemini-3.8-flash-tts',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: cleanText,
-                  speechMetadata: {
-                    style:
-                      'Poised, confident, warm, crystal-clear South Indian Tamil-English female lead voice, graceful, authoritative, crisp diction and natural conversational cadence'
+      for (const model of TTS_MODELS) {
+        try {
+          const ttsRes = await ai.models.generateContent({
+            model,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: cleanText,
+                    speechMetadata: {
+                      style:
+                        'Poised, confident, warm, crystal-clear South Indian Tamil-English female lead voice, graceful, authoritative, crisp diction and natural conversational cadence'
+                    }
                   }
+                ]
+              }
+            ],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Kore' }
                 }
-              ]
-            }
-          ],
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Kore' }
               }
             }
-          }
-        });
-        base64Audio =
-          ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      } catch {
-        const fallbackRes = await ai.models.generateContent({
-          model: 'gemini-3.8-flash-lite-tts',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: cleanText,
-                  speechMetadata: {
-                    style:
-                      'Poised, warm, crystal-clear South Indian Tamil-English female voice with crisp diction'
-                  }
-                }
-              ]
-            }
-          ],
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Kore' }
-              }
-            }
-          }
-        });
-        base64Audio =
-          fallbackRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          });
+          base64Audio =
+            ttsRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (base64Audio) break;
+        } catch {
+          // Try the next configured TTS model
+        }
       }
 
       if (!base64Audio) {
@@ -488,13 +478,7 @@ self.addEventListener('fetch', () => {
       const ai = getAiClient();
       let base64Audio: string | undefined;
 
-      const modelsToTry = [
-        'gemini-2.5-flash-preview-tts',
-        'gemini-3.8-flash-tts',
-        'gemini-3.8-flash-lite-tts'
-      ];
-
-      for (const model of modelsToTry) {
+      for (const model of TTS_MODELS) {
         try {
           const ttsRes = await ai.models.generateContent({
             model,
@@ -550,7 +534,7 @@ self.addEventListener('fetch', () => {
     }
   });
 
-  // Instant Flash-to-Carbon Mentor Chatbot endpoint (<0.5s response via gemini-2.5-flash)
+  // Instant Flash-to-Carbon Mentor Chatbot endpoint 
   app.post('/api/chat', async (req, res) => {
     try {
       const { messages, activePillarName, activeHeadline, stream = false } =
@@ -594,7 +578,7 @@ CORE FLASH-TO-CARBON SYSTEM INSTRUCTION (STRICT RULES):
 
       // Non-streaming fast response with thinkingBudget: 0 for < 0.5s latency
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: CHAT_MODEL,
         contents,
         config: {
           systemInstruction,
@@ -612,13 +596,13 @@ CORE FLASH-TO-CARBON SYSTEM INSTRUCTION (STRICT RULES):
     } catch (error: unknown) {
       const errMsg =
         error instanceof Error ? error.message : 'Unexpected Gemini API error';
-      res.status(500).json({
+      res.status(process.env.GEMINI_API_KEY ? 500 : 503).json({
         error: errMsg
       });
     }
   });
 
-  // Global Web Intelligence Search Endpoint (Google Search Grounding via gemini-4-hydrogen)
+  // Global Web Intelligence Search Endpoint (Google Search grounding, Google News RSS fallback)
   app.post('/api/global-search', async (req, res) => {
     try {
       const { query, activePillar = 'ALL' } = req.body as {
@@ -632,7 +616,6 @@ CORE FLASH-TO-CARBON SYSTEM INSTRUCTION (STRICT RULES):
         return;
       }
 
-      const ai = getAiClient();
       const searchPrompt = `Use Google Search to find the latest verified real-world headlines, developments, and quantitative facts for the topic: "${cleanQuery}" (current sector focus: ${activePillar}).
 
 Supplement the 5 intelligence pillars:
@@ -659,14 +642,12 @@ Return ONLY a valid JSON object inside \`\`\`json ... \`\`\` fences matching thi
 Provide 3 to 4 distinct, recent grounded headlines.`;
 
       try {
+        const ai = getAiClient();
         const response = await ai.models.generateContent({
-          model: 'gemini-4-hydrogen',
+          model: SEARCH_MODEL,
           contents: searchPrompt,
           config: {
-            tools: [{ googleSearch: {} }],
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.LOW
-            }
+            tools: [{ googleSearch: {} }]
           }
         });
 
@@ -681,7 +662,7 @@ Provide 3 to 4 distinct, recent grounded headlines.`;
         res.json(payload);
         return;
       } catch (geminiErr: unknown) {
-        // Fallback to live Google News web search RSS index if Gemini Search Grounding quota is temporarily exhausted
+        // Fall back to Google News RSS when Gemini is unavailable (no key, quota, or model error)
         const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(
           cleanQuery
         )}&hl=en-US&gl=US&ceid=US:en`;
@@ -695,11 +676,8 @@ Provide 3 to 4 distinct, recent grounded headlines.`;
 
         if (rssRes.ok) {
           const xml = await rssRes.text();
-          const fallbackPayload = parseGoogleNewsRssToPayload(xml, cleanQuery);
-          if (fallbackPayload.results.length > 0) {
-            res.json(fallbackPayload);
-            return;
-          }
+          res.json(parseGoogleNewsRssToPayload(xml, cleanQuery));
+          return;
         }
 
         const rawMsg =

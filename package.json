@@ -1,15 +1,16 @@
 {
-  "name": "react-example",
+  "name": "futify-intelligence-terminal",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "tsx server.ts",
     "build": "vite build",
+    "start": "tsx server.ts --production",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist dev-dist",
+    "lint": "tsc --noEmit",
+    "test": "tsx --test src/engine/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^3.1.0",

@@ -63,9 +63,9 @@ export const SpatialXRayOverlay: React.FC<SpatialXRayOverlayProps> = ({
 
   const rawDisplayUrl =
     imageAngleIdx === 0 ? media.activeDisplayImageUrl : media.secondaryImageUrl;
-  const displayImageUrl = rawDisplayUrl.includes('?wsdl') || rawDisplayUrl.includes('unsplash.com')
+  const displayImageUrl = rawDisplayUrl.includes('unsplash.com')
     ? rawDisplayUrl.replace(/w=\d+/, 'w=2000').replace(/q=\d+/, 'q=90')
-    : `${rawDisplayUrl}${rawDisplayUrl.includes('?') ? '&' : '?'}auto=format&fit=crop&w=2000&q=90`;
+    : rawDisplayUrl;
 
   const verifiedUrl =
     liveTrustedArticle?.articleUrl ||

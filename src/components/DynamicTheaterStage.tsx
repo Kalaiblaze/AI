@@ -323,11 +323,12 @@ export const DynamicTheaterStage: React.FC<DynamicTheaterStageProps> = ({
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget;
-              if (
-                target.src !==
-                window.location.origin + media.secondaryImageUrl
-              ) {
-                target.src = media.secondaryImageUrl;
+              const fallbackUrl = new URL(
+                media.secondaryImageUrl,
+                window.location.origin
+              ).href;
+              if (target.src !== fallbackUrl) {
+                target.src = fallbackUrl;
               }
             }}
             className={`w-full h-full object-cover transition-transform duration-1000 ease-out ${

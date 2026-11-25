@@ -60,7 +60,7 @@ export interface PillarMediaAsset {
 export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
   MONEY: {
     pillarId: 'MONEY',
-    primaryImageUrl: 'https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=2000&q=90',
+    primaryImageUrl: '/images/pillars/money.jpg',
     secondaryImageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · BIS mBridge & Sovereign Bullion Data',
     locationBadge: '📍 Mumbai · Dubai · Singapore · Shanghai',
@@ -191,7 +191,7 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   GEOPOLITICS: {
     pillarId: 'GEOPOLITICS',
-    primaryImageUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=2000&q=90',
+    primaryImageUrl: '/images/pillars/geopolitics.jpg',
     secondaryImageUrl: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · ASML EUV & IMEC Corridor Desk',
     locationBadge: '📍 Veldhoven (NL) · Beijing · New Delhi · Brussels',
@@ -322,7 +322,7 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   DEFENCE: {
     pillarId: 'DEFENCE',
-    primaryImageUrl: 'https://images.unsplash.com/photo-1508614589041-895b88991e3e?auto=format&fit=crop&w=2000&q=90',
+    primaryImageUrl: '/images/pillars/defence.jpg',
     secondaryImageUrl: 'https://images.unsplash.com/photo-1569974498991-d3c12a504f95?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · Counter-UAS & Directed Energy Report',
     locationBadge: '📍 High-Altitude Tactical Sector · Edge-AI Test Range',
@@ -453,7 +453,7 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   AEROSPACE: {
     pillarId: 'AEROSPACE',
-    primaryImageUrl: 'https://images.unsplash.com/photo-1517976487468-f20514c44353?auto=format&fit=crop&w=2000&q=90',
+    primaryImageUrl: '/images/pillars/aerospace.jpg',
     secondaryImageUrl: 'https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · SpaceX Starship & Orbital Comms',
     locationBadge: '📍 Starbase Boca Chica · Cape Canaveral · Bengaluru',
@@ -584,7 +584,7 @@ export const PILLAR_MEDIA_CATALOG: Record<NeatPillarId, PillarMediaAsset> = {
 
   TECH: {
     pillarId: 'TECH',
-    primaryImageUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=2000&q=90', // 2000px semiconductor wafer photo!
+    primaryImageUrl: '/images/pillars/tech.jpg',
     secondaryImageUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=2000&q=90',
     photoCredit: 'Verified Desk · IEEE Spectrum Silicon Photonics Lab',
     locationBadge: '📍 Hsinchu (TW) · Santa Clara · Bengaluru Chip Design Hub',
