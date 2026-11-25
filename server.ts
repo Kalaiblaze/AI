@@ -673,11 +673,8 @@ Provide 3 to 4 distinct, recent grounded headlines.`;
 
         if (rssRes.ok) {
           const xml = await rssRes.text();
-          const fallbackPayload = parseGoogleNewsRssToPayload(xml, cleanQuery);
-          if (fallbackPayload.results.length > 0) {
-            res.json(fallbackPayload);
-            return;
-          }
+          res.json(parseGoogleNewsRssToPayload(xml, cleanQuery));
+          return;
         }
 
         const rawMsg =
